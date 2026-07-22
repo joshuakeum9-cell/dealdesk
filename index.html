@@ -219,6 +219,82 @@
           </div>
 
           <fieldset class="brand-fieldset">
+            <legend>Situation assessment</legend>
+            <p class="brand-hint">Answer what you know; every answer sharpens the findings, interview questions, and opportunity ranking. Skip anything you are unsure about.</p>
+            <div class="form-row-3">
+              <div class="form-field">
+                <label for="s-goal">Primary engagement goal</label>
+                <select id="s-goal"><option value="">Not specified</option></select>
+              </div>
+              <div class="form-field">
+                <label for="s-margin">Margin trend</label>
+                <select id="s-margin">
+                  <option value="">Not sure</option>
+                  <option>Improving</option>
+                  <option>Stable</option>
+                  <option>Declining</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="s-driver">What is driving revenue?</label>
+                <select id="s-driver">
+                  <option value="">Not sure</option>
+                  <option value="Volume">Volume growth</option>
+                  <option value="Price">Price and mix</option>
+                  <option value="Both">Both volume and price</option>
+                  <option value="Declining">Demand is softening</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row-3">
+              <div class="form-field">
+                <label for="s-concentration">Customer concentration?</label>
+                <select id="s-concentration">
+                  <option value="">Not sure</option>
+                  <option value="Yes">Yes, top customers matter a lot</option>
+                  <option value="No">No, revenue is diversified</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="s-capacity">Capacity situation</label>
+                <select id="s-capacity">
+                  <option value="">Not sure</option>
+                  <option value="Tight">Running tight</option>
+                  <option value="Balanced">Balanced</option>
+                  <option value="Excess">Excess capacity</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="s-costprog">Cost program underway?</label>
+                <select id="s-costprog">
+                  <option value="">Not sure</option>
+                  <option>Yes</option>
+                  <option>No</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-field">
+                <label for="s-competition">Competitive pressure</label>
+                <select id="s-competition">
+                  <option value="">Not sure</option>
+                  <option>Intensifying</option>
+                  <option>Stable</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="s-urgency">Timeline</label>
+                <select id="s-urgency">
+                  <option value="">Not specified</option>
+                  <option value="Weeks">Decision needed in weeks</option>
+                  <option value="Months">Decision needed in months</option>
+                  <option value="Exploratory">Exploratory</option>
+                </select>
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset class="brand-fieldset">
             <legend>Client branding (optional)</legend>
             <p class="brand-hint">Deliverables default to a neutral "ghost draft" style. Set the client's identity here to enable client branded finals; the structure and logic never change.</p>
             <div class="form-row form-row-3">
@@ -263,6 +339,26 @@
         <div class="demo-banner">
           <span>No files handy?</span>
           <button class="btn btn-sm btn-ghost" onclick="loadSampleCompany()">Load the sample company</button>
+          <button class="btn btn-sm btn-ghost" onclick="toggleManual()">Type the numbers manually</button>
+        </div>
+
+        <div class="manual-panel" id="manual-panel" hidden>
+          <p class="brand-hint">Enter what you have in $ millions. Revenue for at least two years is required; leave anything else blank.</p>
+          <div class="manual-grid">
+            <span class="manual-head">$M</span>
+            <input type="number" id="my-0" value="2021" class="manual-year" />
+            <input type="number" id="my-1" value="2022" class="manual-year" />
+            <input type="number" id="my-2" value="2023" class="manual-year" />
+            <input type="number" id="my-3" value="2024" class="manual-year" />
+            <span class="manual-head">Revenue</span>
+            <input type="number" id="mr-0" placeholder="0.0" /><input type="number" id="mr-1" placeholder="0.0" /><input type="number" id="mr-2" placeholder="0.0" /><input type="number" id="mr-3" placeholder="0.0" />
+            <span class="manual-head">COGS</span>
+            <input type="number" id="mc-0" placeholder="optional" /><input type="number" id="mc-1" placeholder="optional" /><input type="number" id="mc-2" placeholder="optional" /><input type="number" id="mc-3" placeholder="optional" />
+            <span class="manual-head">Opex / SG&amp;A</span>
+            <input type="number" id="mo-0" placeholder="optional" /><input type="number" id="mo-1" placeholder="optional" /><input type="number" id="mo-2" placeholder="optional" /><input type="number" id="mo-3" placeholder="optional" />
+          </div>
+          <button class="btn btn-sm btn-primary" onclick="applyManualFinancials()">Use these numbers</button>
+          <span class="manual-status" id="manual-status"></span>
         </div>
 
         <div class="upload-zones">
@@ -313,6 +409,9 @@
               <div><dt>Revenue band</dt><dd id="r-revenue">-</dd></div>
               <div><dt>Files uploaded</dt><dd id="r-files">-</dd></div>
             </dl>
+            <div class="warn-box" id="sample-warning" hidden>
+              No financial statements were provided, so the documents will use clearly labeled fictional demo numbers. Upload a spreadsheet or type the numbers on the previous step for real output.
+            </div>
             <button class="btn-link" onclick="nextStep(1)">Edit setup</button>
           </div>
 

@@ -1,6 +1,10 @@
 /* ============ DealDesk analysis engine ============
-   Parses uploaded financials and computes the metrics + narrative
-   language that drive all four deliverables. No AI, no server. */
+   Parses uploaded financials and computes the metrics and language
+   that drive all four deliverables. No AI, no server: an expert
+   system. A structured situation assessment plus computed metrics
+   select findings, interview questions, and opportunity hypotheses
+   from a scored library, so two different situations produce
+   genuinely different documents. */
 
 const SAMPLE_FINANCIALS = {
   years: [2021, 2022, 2023, 2024],
@@ -91,6 +95,14 @@ function computeMetrics(fin) {
     ? grossProfit.map((g, i) => g - series.opex[i])
     : null;
 
+  // Is the computed margin trend itself rising or falling?
+  let marginDirection = null;
+  if (ebitda && n > 1) {
+    const mFirst = ebitda[0] / rev[0];
+    const mLast = ebitda[last] / rev[last];
+    marginDirection = mLast - mFirst > 0.01 ? "rising" : mFirst - mLast > 0.01 ? "falling" : "flat";
+  }
+
   return {
     years,
     series,
@@ -103,6 +115,7 @@ function computeMetrics(fin) {
     ebitdaLatest: ebitda ? ebitda[last] : null,
     ebitdaMargin: ebitda ? ebitda[last] / rev[last] : null,
     ebitdaSeries: ebitda,
+    marginDirection,
     growthWord: growthWord(cagr),
   };
 }
@@ -127,7 +140,46 @@ function fmtPct(v) {
   return (v * 100).toFixed(1) + "%";
 }
 
-/* ---------- Practice areas: every output tailors to one ---------- */
+/* ---------- Context guard ----------
+   The engagement context box accepts anything, including long pasted
+   memos. Framing sentences only ever take the first sentence, capped;
+   the full text goes into its own document section instead. */
+
+function focusPhrase(context) {
+  if (!context) return "";
+  let s = String(context).replace(/\s+/g, " ").trim();
+  const stop = s.search(/[.!?]\s/);
+  if (stop > 10) s = s.slice(0, stop);
+  if (s.length > 140) s = s.slice(0, 140).replace(/\s\S*$/, "");
+  return s;
+}
+
+/* ---------- Situation assessment ----------
+   Structured answers from the engagement form. Every value defaults
+   to "" (not answered), and the engine treats unanswered as neutral. */
+
+function situationOf(deal) {
+  const s = deal.situation || {};
+  return {
+    goal: s.goal || "",
+    marginTrend: s.marginTrend || "",       // Improving | Stable | Declining
+    revenueDriver: s.revenueDriver || "",   // Volume | Price | Both | Declining
+    concentration: s.concentration || "",   // Yes | No
+    capacity: s.capacity || "",             // Tight | Balanced | Excess
+    costProgram: s.costProgram || "",       // Yes | No
+    competition: s.competition || "",       // Intensifying | Stable
+    urgency: s.urgency || "",               // Weeks | Months | Exploratory
+  };
+}
+
+// Goal options shown in the form, per practice.
+const PRACTICE_GOALS = {
+  strategy: ["Growth strategy", "Portfolio review", "Competitive response", "Market entry"],
+  operations: ["Cost reduction", "Margin turnaround", "Capacity and footprint", "Supply chain resilience"],
+  financial: ["Validate acquisition thesis", "Identify synergies", "Prepare a separation", "Maximize sale value"],
+};
+
+/* ---------- Practice areas ---------- */
 
 const PRACTICES = {
   strategy: {
@@ -136,46 +188,39 @@ const PRACTICES = {
     guideTitle: "Strategy Interview Guide",
     deckTitle: "Strategic options assessment",
     deckShort: "Strategic Options Presentation",
-    frame: (deal) =>
-      `The client has commissioned a strategic review of ${deal.company} covering competitive position, growth options, and portfolio choices${deal.context ? `, with a focus on ${deal.context.replace(/\.$/, "")}` : ""}.`,
+    frame: (deal) => {
+      const fp = focusPhrase(deal.context);
+      return `The client has commissioned a strategic review of ${deal.company} covering competitive position, growth options, and portfolio choices${fp ? `, with a focus on ${fp.replace(/\.$/, "")}` : ""}.`;
+    },
     overview: (deal, m) =>
       `Market attractiveness, share position, and the durability of ${deal.company}'s competitive advantages frame every recommendation in this review.`,
-    finding: {
+    defaultRisk: {
       lead: "Strategic position",
-      text: "Competitive positioning and market attractiveness are unvalidated; the growth thesis depends on both (see Section 4).",
+      text: "Competitive positioning and market attractiveness are unvalidated; the growth thesis depends on both.",
     },
-    anchor: {
-      lead: "Opportunity anchor",
-      text: "Focusing the core while pricing to value is the highest confidence move; market entry options carry more risk and should be staged (see the options presentation).",
-    },
-    riskBullet: "Strategic drift: confirm which businesses are core, and whether management's growth bets align with where the market is moving.",
     emailRisk: {
       lead: "Primary risk",
       text: "The competitive response to any strategic move is unmodeled; war gaming the top two options should precede commitment.",
     },
-    interviewSections: [
+    baseSections: [
       { section: "Objectives and context", questions: [
         "What prompted this strategic review now, and what decision does it need to inform?",
         "What would a successful outcome look like in three years, in terms you would measure?",
         "Which options are already on or off the table, and why?",
-        "Who are the key stakeholders for this decision, and where do they disagree?",
       ]},
       { section: "Business overview and strategy", questions: [
         "How does the company win today: what do customers buy from you that they cannot get elsewhere?",
         "Which businesses or products do you consider core, and which are legacy?",
-        "Where has the strategy changed in the last three years, and why?",
         "Which parts of the business earn returns above their cost of capital, and which do not?",
       ]},
       { section: "Market and competition", questions: [
         "How large is the addressable market, and how fast is it growing?",
         "Who are the top three competitors, and where are they winning share?",
         "Where do you have pricing power, and where are you a price taker?",
-        "What could a new entrant or substitute do to your economics in the next five years?",
       ]},
       { section: "Growth options", questions: [
         "Which adjacencies (products, segments, geographies) have you evaluated, and what stopped you?",
         "For each growth option: would you build, buy, or partner, and why?",
-        "What would you do with twice the investment capacity?",
         "Which past growth bets worked, which did not, and what separated them?",
       ]},
       { section: "Organization and execution capacity", questions: [
@@ -184,16 +229,27 @@ const PRACTICES = {
         "How quickly can the organization reallocate people and capital when priorities change?",
       ]},
     ],
+    conditionalQuestions: [
+      { topic: 2, cond: (s) => s.competition === "Intensifying", q: "Which competitor move of the last year worried you most, and how did you respond?" },
+      { topic: 1, cond: (s) => s.marginTrend === "Declining", q: "Margins have been under pressure: how much is price, how much is cost, and how much is mix?" },
+      { topic: 3, cond: (s) => s.revenueDriver === "Declining", q: "With demand softening, which segments would you defend at all costs, and which would you let go?" },
+      { topic: 1, cond: (s) => s.concentration === "Yes", q: "How dependent is the business on its largest customers, and how would losing one change the strategy?" },
+      { topic: 4, cond: (s) => s.costProgram === "Yes", q: "How does the current cost program interact with the growth agenda: where do they conflict?" },
+    ],
     groups: [
-      { label: "Growth moves", slideTitle: "Growth moves center on pricing to value and staged entry into proven adjacencies", slideTakeaway: "Stage growth investments behind evidence; pricing is the fastest lever", items: [
-        { name: "Value based pricing reset", rationale: "Pricing is the fastest profit lever; segments with demonstrated willingness to pay are underpriced today.", impact: "High", ease: "High" },
-        { name: "Adjacent segment entry", rationale: "The core capability set transfers to a neighboring customer segment with limited incremental investment.", impact: "High", ease: "Medium" },
-        { name: "Geographic expansion", rationale: "Demand exists in adjacent regions the current footprint does not serve.", impact: "Medium", ease: "Low" },
+      { label: "Growth moves", slideTitle: "Growth moves center on the highest scoring levers for this situation", slideTakeaway: "Stage growth investments behind evidence; sequence the highest confidence lever first", items: [
+        { name: "Value based pricing reset", rationale: "Pricing is the fastest profit lever; segments with demonstrated willingness to pay are underpriced today.", impact: "High", ease: "High", boost: (s, m) => (s.revenueDriver === "Volume" ? 2 : 0) + (s.marginTrend === "Declining" ? 1 : 0) },
+        { name: "Adjacent segment entry", rationale: "The core capability set transfers to a neighboring customer segment with limited incremental investment.", impact: "High", ease: "Medium", boost: (s) => (s.goal === "Growth strategy" || s.goal === "Market entry" ? 2 : 0) },
+        { name: "Geographic expansion", rationale: "Demand exists in adjacent regions the current footprint does not serve.", impact: "Medium", ease: "Low", boost: (s) => (s.goal === "Market entry" ? 2 : 0) },
+        { name: "Mix shift toward higher margin volume", rationale: "Replacing low margin volume with higher value business raises profitability without raising cost.", impact: "High", ease: "Medium", boost: (s) => (s.marginTrend === "Declining" ? 2 : 0) + (s.capacity === "Excess" ? 2 : 0) + (s.revenueDriver === "Price" ? 1 : 0) },
+        { name: "Defend the core against attack", rationale: "Intensifying competition makes retention of profitable core customers the first priority.", impact: "High", ease: "Medium", boost: (s) => (s.competition === "Intensifying" ? 3 : 0) },
       ]},
-      { label: "Portfolio moves", slideTitle: "Portfolio moves sharpen the core by reallocating capital from legacy positions", slideTakeaway: "Fund the growth agenda by pruning what no longer earns its capital", items: [
-        { name: "Core focus and simplification", rationale: "Complexity in the tail of the portfolio absorbs management attention disproportionate to its profit.", impact: "Medium", ease: "Medium" },
-        { name: "Partnership or alliance", rationale: "A partner supplies the missing capability faster than building it internally.", impact: "Medium", ease: "Medium" },
-        { name: "Divest noncore assets", rationale: "Legacy positions may be worth more to another owner; proceeds fund the growth agenda.", impact: "High", ease: "Low" },
+      { label: "Portfolio moves", slideTitle: "Portfolio moves reallocate capital from legacy positions to where it earns", slideTakeaway: "Fund the agenda by pruning what no longer earns its capital", items: [
+        { name: "Core focus and simplification", rationale: "Complexity in the tail of the portfolio absorbs management attention disproportionate to its profit.", impact: "Medium", ease: "Medium", boost: (s) => (s.goal === "Portfolio review" ? 2 : 0) },
+        { name: "Partnership or alliance", rationale: "A partner supplies the missing capability faster than building it internally.", impact: "Medium", ease: "Medium", boost: (s) => (s.urgency === "Weeks" ? 1 : 0) },
+        { name: "Divest noncore assets", rationale: "Legacy positions may be worth more to another owner; proceeds fund the growth agenda.", impact: "High", ease: "Low", boost: (s) => (s.goal === "Portfolio review" ? 2 : 0) + (s.revenueDriver === "Declining" ? 1 : 0) },
+        { name: "Right size capacity to the strategy", rationale: "Excess capacity ties up capital and management attention that the growth agenda needs.", impact: "Medium", ease: "Medium", boost: (s) => (s.capacity === "Excess" ? 3 : -6) },
+        { name: "Exit structurally declining segments", rationale: "Segments in structural decline consume investment that compounds better elsewhere.", impact: "High", ease: "Low", boost: (s) => (s.revenueDriver === "Declining" ? 3 : -6) },
       ]},
     ],
   },
@@ -204,46 +260,39 @@ const PRACTICES = {
     guideTitle: "Operations Interview Guide",
     deckTitle: "Operational improvement assessment",
     deckShort: "Operational Improvement Presentation",
-    frame: (deal) =>
-      `The client has engaged an operational review of ${deal.company} to identify efficiency, cost, and throughput improvements${deal.context ? `, with a focus on ${deal.context.replace(/\.$/, "")}` : ""}.`,
+    frame: (deal) => {
+      const fp = focusPhrase(deal.context);
+      return `The client has engaged an operational review of ${deal.company} to identify efficiency, cost, and throughput improvements${fp ? `, with a focus on ${fp.replace(/\.$/, "")}` : ""}.`;
+    },
     overview: (deal, m) =>
       `The operating model, cost structure, and supply chain of ${deal.company} are the units of analysis; financial results are treated as symptoms of operational drivers.`,
-    finding: {
+    defaultRisk: {
       lead: "Operational efficiency",
-      text: "The cost base has not been benchmarked against peers; margin trends suggest addressable inefficiency in procurement and overhead (see Section 4).",
+      text: "The cost base has not been benchmarked against peers; margin trends suggest addressable inefficiency.",
     },
-    anchor: {
-      lead: "Opportunity anchor",
-      text: "Procurement and process improvement are the highest confidence levers; footprint changes carry more disruption risk (see the improvement presentation).",
-    },
-    riskBullet: "Operational fragility: identify single points of failure in the supply chain and capacity constraints that cap growth.",
     emailRisk: {
       lead: "Primary risk",
-      text: "Savings estimates are top down until process level data is gathered; the bottom up validation could move totals materially in either direction.",
+      text: "Savings estimates are top down until process level data is gathered; bottom up validation could move totals materially.",
     },
-    interviewSections: [
+    baseSections: [
       { section: "Objectives and context", questions: [
         "What prompted this operational review now, and what outcome would make it a success?",
         "Which operational problems does leadership already agree on, and where is there debate?",
-        "What improvement programs are already underway, and how are they tracking?",
         "What constraints (customer commitments, labor agreements, capital) limit the solution space?",
       ]},
       { section: "Operating model overview", questions: [
         "Walk us through the end to end flow from order to delivery: where does it slow down?",
         "Which sites or lines run at capacity, and which are underutilized?",
         "What are the three metrics you review daily, and what are they telling you?",
-        "Where do handoffs between functions create delay or error?",
       ]},
       { section: "Process and quality", questions: [
         "Where are the largest sources of rework, scrap, or error?",
         "Which processes are documented and standardized vs. dependent on individuals?",
         "What continuous improvement programs exist, and what have they delivered?",
-        "How is quality measured at each stage, and who acts on the data?",
       ]},
       { section: "Supply chain and procurement", questions: [
         "Who are the top five suppliers by spend, and when were their contracts last renegotiated?",
         "How many days of inventory do you hold, and what drives it?",
-        "Where have logistics costs moved over the last two years?",
         "Which supply relationships are single sourced, and what is the backup plan?",
       ]},
       { section: "Cost structure", questions: [
@@ -252,57 +301,100 @@ const PRACTICES = {
         "Which cost lines have grown faster than revenue, and why?",
       ]},
     ],
+    conditionalQuestions: [
+      { topic: 1, cond: (s) => s.capacity === "Excess", q: "Which parts of the network are sized for volume you no longer carry, and what does that idle capacity cost per quarter?" },
+      { topic: 4, cond: (s) => s.costProgram === "Yes", q: "How is the current cost program tracking against its target, and where is capture behind plan?" },
+      { topic: 1, cond: (s) => s.marginTrend === "Declining", q: "Cost has outrun revenue: which lines moved most, and which were deliberate choices vs. drift?" },
+      { topic: 3, cond: (s) => s.concentration === "Yes", q: "How much of the network and inventory is dedicated to your largest customers, and what happens to that cost if their volume changes?" },
+      { topic: 4, cond: (s) => s.urgency === "Weeks", q: "Which savings could be actioned within 90 days without structural change?" },
+    ],
     groups: [
-      { label: "Cost reduction", slideTitle: "Procurement and process waste are the largest near term cost reduction levers", slideTakeaway: "Cost levers are within management's direct control; sequence procurement first", items: [
-        { name: "Procurement renegotiation", rationale: "Concentrated supplier spend with dated contracts supports renegotiated rates and consolidation.", impact: "High", ease: "High" },
-        { name: "Process and lean improvement", rationale: "Rework and unstandardized processes absorb labor hours that standard work releases.", impact: "Medium", ease: "Medium" },
-        { name: "Footprint optimization", rationale: "Underutilized sites carry fixed cost the network no longer needs.", impact: "High", ease: "Low" },
+      { label: "Cost reduction", slideTitle: "Cost reduction levers are ranked for this specific situation", slideTakeaway: "Cost levers are within management's direct control; sequence the highest scoring first", items: [
+        { name: "Procurement renegotiation", rationale: "Concentrated supplier spend with dated contracts supports renegotiated rates and consolidation.", impact: "High", ease: "High", boost: (s) => (s.costProgram === "No" ? 1 : 0) },
+        { name: "Process and lean improvement", rationale: "Rework and unstandardized processes absorb labor hours that standard work releases.", impact: "Medium", ease: "Medium", boost: () => 0 },
+        { name: "Footprint and network optimization", rationale: "Underutilized sites carry fixed cost the network no longer needs; closures must track the volume glide down.", impact: "High", ease: "Low", boost: (s) => (s.capacity === "Excess" ? 3 : 0) },
+        { name: "Accelerate the existing cost program", rationale: "A program is already underway; the fastest value is closing the gap between announced savings and captured savings.", impact: "High", ease: "Medium", boost: (s) => (s.costProgram === "Yes" ? 3 : -6) },
+        { name: "Overhead and span of control reset", rationale: "Declining margin with stable revenue points to indirect cost growth that a spans and layers review addresses.", impact: "Medium", ease: "Medium", boost: (s) => (s.marginTrend === "Declining" ? 2 : 0) },
       ]},
-      { label: "Performance improvement", slideTitle: "Planning and automation improvements raise throughput without new capacity", slideTakeaway: "Throughput gains defer capital spend; start where data already exists", items: [
-        { name: "Demand planning and forecasting", rationale: "Forecast error drives both stockouts and excess inventory; better planning releases working capital.", impact: "Medium", ease: "Medium" },
-        { name: "Targeted automation", rationale: "High volume repetitive steps are automatable with proven technology and rapid payback.", impact: "Medium", ease: "Medium" },
-        { name: "Quality system uplift", rationale: "Reducing defect rates lowers cost of poor quality and warranty exposure simultaneously.", impact: "Medium", ease: "High" },
+      { label: "Performance improvement", slideTitle: "Performance levers raise throughput and margin quality without new capacity", slideTakeaway: "Throughput and mix gains defer capital spend; start where data already exists", items: [
+        { name: "Demand planning and forecasting", rationale: "Forecast error drives both stockouts and excess inventory; better planning releases working capital.", impact: "Medium", ease: "Medium", boost: () => 0 },
+        { name: "Targeted automation", rationale: "High volume repetitive steps are automatable with proven technology and rapid payback.", impact: "Medium", ease: "Medium", boost: (s) => (s.capacity === "Tight" ? 1 : 0) },
+        { name: "Quality system uplift", rationale: "Reducing defect rates lowers cost of poor quality and warranty exposure simultaneously.", impact: "Medium", ease: "High", boost: () => 0 },
+        { name: "Capacity rebalancing across the network", rationale: "Constrained sites cap revenue while others sit idle; rebalancing lifts throughput without capex.", impact: "High", ease: "Medium", boost: (s) => (s.capacity === "Tight" ? 3 : 0) },
+        { name: "Revenue per unit and mix discipline", rationale: "Price and mix are carrying growth; protecting that gain operationally matters as much as cost.", impact: "High", ease: "Medium", boost: (s) => (s.revenueDriver === "Price" ? 3 : 0) + (s.marginTrend === "Declining" ? 1 : 0) },
       ]},
     ],
   },
 
   financial: {
     label: "Financial / M&A",
-    blurb: "M&A advisory, restructuring, profitability, risk",
+    blurb: "M&A advisory, divestitures, synergies, deal value",
     guideTitle: "Divestiture Interview Guide",
     deckTitle: "Qualitative synergy assessment",
     deckShort: "Qualitative Synergy Presentation",
-    frame: null, // uses deal type specific framing below
+    frame: null, // deal type specific, built in buildNarrative
     overview: (deal, m) =>
       `${deal.company} operates in the ${(deal.industry || "target").toLowerCase()} sector; the analysis focuses on quality of earnings, deal perimeter, and value creation levers.`,
-    finding: null, // deal type specific, built in buildKeyFindings
-    anchor: {
-      lead: "Synergy anchor",
-      text: "Procurement scale is the highest confidence synergy opportunity; revenue synergies should be treated as upside, not base case (see the synergy presentation).",
-    },
-    riskBullet: null, // deal type specific
+    defaultRisk: null, // deal type specific
     emailRisk: null, // deal type specific
-    interviewSections: null, // deal type specific, legacy builder
-    groups: null, // built dynamically in buildOpportunities
+    baseSections: null, // deal type specific, built in buildInterviewQuestions
+    conditionalQuestions: [
+      { topic: 2, cond: (s) => s.concentration === "Yes", q: "What share of revenue sits with the top five customers, and how would the transaction affect those relationships?" },
+      { topic: 3, cond: (s) => s.capacity === "Excess", q: "How much capacity would the combined or separated business carry relative to its volume, and who bears the stranded cost?" },
+      { topic: 2, cond: (s) => s.costProgram === "Yes", q: "How much of the announced cost program is already reflected in the numbers, and how much is still to be captured?" },
+      { topic: 2, cond: (s) => s.marginTrend === "Declining", q: "Walk us through the margin bridge over the last two years: what portion is structural vs. one time?" },
+    ],
+    groups: [
+      { label: "Revenue synergies", slideTitle: "Revenue synergies are ranked by fit with this transaction", slideTakeaway: "Revenue synergies carry more execution risk than cost synergies; treat as upside, not base case", items: [
+        { name: "Cross sell into the combined customer base", rationale: "Customers of each business can be offered the other's adjacent products.", impact: "High", ease: "Medium", boost: () => 0 },
+        { name: "Geographic and channel expansion", rationale: "The combined footprint opens regions and channels neither business serves alone.", impact: "Medium", ease: "Medium", boost: () => 0 },
+        { name: "Pricing harmonization", rationale: "Aligning price levels and discount discipline across the combined book lifts realized price.", impact: "Medium", ease: "High", boost: (s) => (s.revenueDriver === "Price" ? 2 : 0) },
+        { name: "Key account retention program", rationale: "Concentrated revenue makes protecting the largest relationships through close the first revenue priority.", impact: "High", ease: "Medium", boost: (s) => (s.concentration === "Yes" ? 3 : 0) },
+      ]},
+      { label: "Cost synergies", slideTitle: "Cost synergies anchor the value case and are within management's control", slideTakeaway: "Cost synergies should anchor the value case; sequence procurement first", items: [
+        { name: "Procurement scale and vendor consolidation", rationale: "Combined purchasing volume supports renegotiated rates with overlapping vendors.", impact: "High", ease: "High", boost: () => 0 },
+        { name: "Overlapping G&A rationalization", rationale: "Duplicated back office functions can be consolidated over 12 to 24 months.", impact: "Medium", ease: "Medium", boost: () => 0 },
+        { name: "Facility and footprint optimization", rationale: "Overlapping or underused facilities carry fixed cost the combined network does not need.", impact: "Medium", ease: "Low", boost: (s) => (s.capacity === "Excess" ? 3 : 0) },
+        { name: "Margin improvement to peer levels", rationale: "Profitability trails typical sector levels, an addressable opportunity independent of the deal.", impact: "High", ease: "Medium", boost: (s, m) => (m.ebitdaMargin !== null && m.ebitdaMargin < 0.12 ? 3 : 0) + (s.marginTrend === "Declining" ? 1 : 0) },
+        { name: "Integrate the existing cost program", rationale: "An announced cost program must be folded into the synergy case to avoid double counting and to protect capture.", impact: "Medium", ease: "Medium", boost: (s) => (s.costProgram === "Yes" ? 3 : -6) },
+      ]},
+    ],
   },
-
 };
 
 function practiceOf(deal) {
   return PRACTICES[deal.practice] || PRACTICES.financial;
 }
 
-// What the value levers are called, per practice
 const PRACTICE_TERMS = { strategy: "opportunity", operations: "improvement", financial: "synergy" };
 
 function practiceTerm(deal) {
   return PRACTICE_TERMS[deal.practice] || "synergy";
 }
 
-/* ---------- Value scenarios (PwC Task 4 structure) ----------
-   Per line percentage ranges applied to their own cost lines, revenue
-   uplift flowing through at an assumed margin, three scenarios:
-   conservative = low end, aggressive = high end, midpoint between. */
+/* ---------- Situation risk (shared by summary, deck, email) ---------- */
+
+function situationRisk(deal, m) {
+  const s = situationOf(deal);
+  if (s.concentration === "Yes")
+    return { lead: "Customer concentration", text: "A significant share of revenue depends on a small number of customers; quantify the exposure and the retention plan before anything else." };
+  if (s.capacity === "Excess")
+    return { lead: "Stranded capacity", text: "The network is sized for volume it no longer carries; cost must come out at least as fast as volume leaves or margin will keep compressing." };
+  if (s.marginTrend === "Declining" || (m.ebitdaMargin !== null && m.ebitdaMargin < 0.08))
+    return { lead: "Margin compression", text: "Profitability is moving the wrong way; build the margin bridge to separate structural pressure from one time items." };
+  if (s.competition === "Intensifying")
+    return { lead: "Competitive pressure", text: "Competitors are moving; every recommendation must survive a realistic view of their response." };
+  if (s.costProgram === "Yes")
+    return { lead: "Cost program capture", text: "Announced savings are not captured savings; track the program at the initiative level to protect the value." };
+  const P = practiceOf(deal);
+  if (P.defaultRisk) return P.defaultRisk;
+  const separation = deal.dealType === "Divestiture" || deal.dealType === "Carve out";
+  return separation
+    ? { lead: "Separation complexity", text: "Entangled systems, shared services, and TSA scope are the largest unquantified risks; management interviews should map them first." }
+    : { lead: "Integration readiness", text: "Operational dependencies and management retention determine speed to value; both are unconfirmed at this stage." };
+}
+
+/* ---------- Value scenarios (per line ranges, three scenarios) ---------- */
 
 function buildScenarioInputs(deal, m) {
   const lines = [];
@@ -339,77 +431,92 @@ function computeScenarios(deal, m) {
 /* ---------- Narrative rules ---------- */
 
 function buildNarrative(deal, m) {
-  const growthSentence =
+  const s = situationOf(deal);
+
+  let growthSentence =
     m.revenueCAGR > 0
       ? `Revenue grew from ${fmtM(m.series.revenue[0])} in ${m.firstYear} to ${fmtM(m.revenueLatest)} in ${m.lastYear}, a ${m.growthWord} ${fmtPct(m.revenueCAGR)} compound annual growth rate.`
       : `Revenue declined from ${fmtM(m.series.revenue[0])} in ${m.firstYear} to ${fmtM(m.revenueLatest)} in ${m.lastYear}, an area for focused diligence.`;
+  if (s.revenueDriver === "Price") {
+    growthSentence += " Management attributes the growth to price and mix rather than volume; validate its durability.";
+  } else if (s.revenueDriver === "Declining") {
+    growthSentence += " Management reports softening demand behind the headline figures.";
+  }
 
-  const marginSentence = m.ebitdaMargin
+  let marginSentence = m.ebitdaMargin !== null
     ? m.ebitdaMargin > 0.2
       ? `EBITDA margin of ${fmtPct(m.ebitdaMargin)} is strong for the sector and suggests durable pricing power or cost discipline.`
       : m.ebitdaMargin > 0.1
       ? `EBITDA margin of ${fmtPct(m.ebitdaMargin)} is within a typical range, with room for operational improvement after close.`
       : `EBITDA margin of ${fmtPct(m.ebitdaMargin)} is thin, making cost structure a priority diligence area.`
-    : "Profitability could not be derived from the uploaded statements; request a full income statement.";
+    : "Profitability could not be derived from the provided statements; request a full income statement.";
+  if (s.marginTrend === "Declining" && m.marginDirection === "rising") {
+    marginSentence += " Note: management describes margin as declining while the provided statements show it rising; reconcile the two views early.";
+  } else if (s.marginTrend === "Declining") {
+    marginSentence += " Management confirms margin is under pressure; the margin bridge is the first analysis to build.";
+  }
 
   const P = practiceOf(deal);
-  const dealFrame = P.frame
+  const fp = focusPhrase(deal.context);
+  let dealFrame = P.frame
     ? P.frame(deal)
     : {
-        "Acquisition": `The client is evaluating the acquisition of ${deal.company} to ${deal.context || "expand its market position"}.`,
+        "Acquisition": `The client is evaluating the acquisition of ${deal.company} to ${fp || "expand its market position"}.`,
         "Divestiture": `The client is preparing ${deal.company} for divestiture and needs a clear view of separation complexity and standalone economics.`,
         "Carve out": `${deal.company} is being carved out of its parent, so entanglements and transition services drive both risk and value.`,
         "Merger": `The contemplated merger with ${deal.company} turns on integration feasibility and the credibility of the combined entity synergy case.`,
       }[deal.dealType];
+  if (s.goal) dealFrame += ` The stated priority is ${s.goal.toLowerCase()}.`;
 
   return { growthSentence, marginSentence, dealFrame };
 }
 
-/* ---------- Numbered key findings (exec summary + deck) ---------- */
+/* ---------- Key findings ---------- */
 
 function buildKeyFindings(deal, m) {
-  const findings = [
+  const n = buildNarrative(deal, m);
+  const risk = situationRisk(deal, m);
+  const opps = buildOpportunities(deal, m);
+  const top = opps.ranked[0];
+  const term = practiceTerm(deal);
+
+  return [
+    { lead: "Top line", text: n.growthSentence + " See Section 2." },
+    { lead: "Profitability", text: n.marginSentence + " See Section 2." },
+    { lead: risk.lead, text: risk.text },
     {
-      lead: "Top line growth",
-      text:
-        m.revenueCAGR > 0
-          ? `Revenue grew from ${fmtM(m.series.revenue[0])} (${m.firstYear}) to ${fmtM(m.revenueLatest)} (${m.lastYear}), a ${fmtPct(m.revenueCAGR)} CAGR; confirm how much is volume vs. price (see Section 3).`
-          : `Revenue declined from ${fmtM(m.series.revenue[0])} to ${fmtM(m.revenueLatest)} over the period; the value case rests on margin and synergies (see Section 3).`,
+      lead: `${term.charAt(0).toUpperCase() + term.slice(1)} anchor`,
+      text: `${top.name} scores highest for this situation on impact and achievability; see the accompanying presentation for the ranked view.`,
     },
-    {
-      lead: "Profitability",
-      text:
-        m.ebitdaMargin !== null
-          ? `EBITDA of ${fmtM(m.ebitdaLatest)} implies a ${fmtPct(m.ebitdaMargin)} margin in ${m.lastYear}; ${m.ebitdaMargin > 0.2 ? "strong for the sector, but validate sustainability" : m.ebitdaMargin > 0.1 ? "within a typical range, with improvement potential after close" : "thin, making the cost base a priority diligence area"} (see Section 3).`
-          : "Profitability could not be derived from the provided statements; request a full income statement before proceeding.",
-    },
-    practiceFinding(deal),
-    practiceOf(deal).anchor,
   ];
-  return findings;
 }
 
-function practiceFinding(deal) {
-  const P = practiceOf(deal);
-  if (P.finding) return P.finding;
-  // Financial/M&A: the third finding varies by deal type
-  const separation = deal.dealType === "Divestiture" || deal.dealType === "Carve out";
-  return {
-    lead: separation ? "Separation complexity" : "Integration readiness",
-    text: separation
-      ? "Entangled systems, shared services, and TSA scope are the largest unquantified risks; management interviews should map them first (see Section 4)."
-      : "Operational dependencies and management retention determine speed to value; both are unconfirmed at this stage (see Section 4).",
-  };
-}
-
-/* ---------- Interview guide rules (vary by deal type) ---------- */
+/* ---------- Interview questions ---------- */
 
 function buildInterviewQuestions(deal) {
   const P = practiceOf(deal);
-  if (P.interviewSections) return P.interviewSections;
+  const s = situationOf(deal);
 
-  // Financial/M&A: deal type driven guide, pitched at CFO level.
-  // Covers motivation, financials, entanglement, and standalone operations.
+  let sections;
+  if (P.baseSections) {
+    sections = P.baseSections.map((sec) => ({ section: sec.section, questions: [...sec.questions] }));
+  } else {
+    sections = financialBaseSections(deal);
+  }
+
+  // Situation triggered questions slot into their topics, capped at 20 total.
+  let total = sections.reduce((t, sec) => t + sec.questions.length, 0);
+  for (const cq of P.conditionalQuestions || []) {
+    if (total >= 20) break;
+    if (cq.cond(s) && sections[cq.topic]) {
+      sections[cq.topic].questions.push(cq.q);
+      total += 1;
+    }
+  }
+  return sections;
+}
+
+function financialBaseSections(deal) {
   const separation = deal.dealType === "Divestiture" || deal.dealType === "Carve out";
 
   const motivation = {
@@ -419,13 +526,11 @@ function buildInterviewQuestions(deal) {
           `What is driving the decision to ${deal.dealType === "Divestiture" ? "divest" : "carve out"} this business, and why now?`,
           "What does a successful outcome look like: price, speed, certainty, or ongoing relationship?",
           "Have you explored alternatives (sale, spin, joint venture, wind down), and what ruled them out?",
-          "What are the board's expectations on timeline, and what could move them?",
         ]
       : [
           `What is the strategic rationale for this ${deal.dealType.toLowerCase()}, and why now?`,
           "What does a successful outcome look like twelve months after close?",
           "Which alternatives were considered, and what made this path the preferred one?",
-          "Where does leadership disagree about this transaction?",
         ],
   };
 
@@ -435,7 +540,6 @@ function buildInterviewQuestions(deal) {
       `Walk us through ${deal.company}'s operating model: key products, customer segments, and how revenue is generated.`,
       "Which products, sites, contracts, and people sit inside the transaction perimeter?",
       "Which shared functions or systems does the business rely on today?",
-      "How was this business integrated when it was acquired or built, and how integrated is it now?",
     ],
   };
 
@@ -443,7 +547,6 @@ function buildInterviewQuestions(deal) {
     section: "Financial performance",
     questions: [
       "What drove the revenue trend over the historical period, and how much is volume vs. price?",
-      "How is this business's performance reported internally if it is not broken out in the financial statements?",
       "Which costs are fixed vs. variable, and where is there discretion in the cost base?",
       "Are there any one time items, related party transactions, or accounting changes we should normalize for?",
     ],
@@ -500,95 +603,67 @@ function buildInterviewQuestions(deal) {
   return [motivation, overview, financials, byType[deal.dealType], standalone];
 }
 
-/* ---------- Opportunity hypotheses (vary by practice, deal type, metrics) ---------- */
+/* ---------- Opportunity selection (scored library) ---------- */
 
-// Returns { groups: [{label, slideTitle, slideTakeaway, items}, x2] }
+// Scores every library item against the situation and metrics, keeps
+// the top three per group. Returns { groups, ranked } where ranked is
+// all selected items ordered by total score.
 function buildOpportunities(deal, m) {
   const P = practiceOf(deal);
-  if (P.groups) return { groups: P.groups };
-  const syn = buildSynergies(deal, m);
-  return {
-    groups: [
-      {
-        label: "Revenue synergies",
-        slideTitle: "Revenue synergies center on cross selling into the combined customer base and widening the addressable footprint",
-        slideTakeaway: "Revenue synergies carry more execution risk than cost synergies; treat as upside, not base case",
-        items: syn.revenue,
-      },
-      {
-        label: "Cost synergies",
-        slideTitle: "Procurement scale and overlapping G&A anchor the cost case, with capture feasible inside 24 months",
-        slideTakeaway: "Cost synergies should anchor the value case; they are within management's direct control",
-        items: syn.cost,
-      },
-    ],
-  };
-}
+  const s = situationOf(deal);
+  const impactScore = { High: 3, Medium: 2, Low: 1 };
 
-function buildSynergies(deal, m) {
-  const revenue = [
-    {
-      name: "Cross sell into the combined customer base",
-      rationale: `${deal.company}'s customers can be offered the acquirer's adjacent products, and vice versa.`,
-      impact: "High",
-      ease: "Medium",
-    },
-    {
-      name: "Geographic and channel expansion",
-      rationale: "The combined footprint opens regions and channels neither business serves alone.",
-      impact: "Medium",
-      ease: "Medium",
-    },
-  ];
-  const cost = [
-    {
-      name: "Procurement scale and vendor consolidation",
-      rationale: "Combined purchasing volume supports renegotiated rates with overlapping vendors.",
-      impact: "High",
-      ease: "High",
-    },
-    {
-      name: "Overlapping G&A rationalization",
-      rationale: "Duplicated back office functions (finance, HR, IT) can be consolidated over 12 to 24 months.",
-      impact: "Medium",
-      ease: "Medium",
-    },
-    {
-      name: "Facility and footprint optimization",
-      rationale: "Locating operations together reduces lease and logistics costs where geographies overlap.",
-      impact: "Medium",
-      ease: "Low",
-    },
-  ];
-  if (m.ebitdaMargin !== null && m.ebitdaMargin < 0.12) {
-    cost.unshift({
-      name: "Margin improvement to peer levels",
-      rationale: `EBITDA margin of ${fmtPct(m.ebitdaMargin)} trails typical sector levels, suggesting addressable cost opportunity independent of the deal.`,
-      impact: "High",
-      ease: "Medium",
-    });
-  }
-  return { revenue, cost };
+  const groups = P.groups.map((g) => {
+    const scored = g.items.map((item, i) => ({
+      ...item,
+      score:
+        impactScore[item.impact] + impactScore[item.ease] +
+        (item.boost ? item.boost(s, m) : 0) -
+        i * 0.01, // stable tie break by library order
+    }));
+    scored.sort((a, b) => b.score - a.score);
+    return {
+      label: g.label,
+      slideTitle: g.slideTitle,
+      slideTakeaway: g.slideTakeaway,
+      items: scored.slice(0, 3),
+    };
+  });
+
+  const ranked = groups
+    .flatMap((g) => g.items)
+    .slice()
+    .sort((a, b) => b.score - a.score);
+
+  return { groups, ranked };
 }
 
 /* ---------- Email summary (BLUF: answer first, then support) ---------- */
 
 function buildEmail(deal, m) {
+  const s = situationOf(deal);
   const projRev = m.revenueLatest * Math.pow(1 + Math.max(m.revenueCAGR, 0.02), 5);
   const marginText =
     m.ebitdaMargin !== null ? fmtPct(m.ebitdaMargin) + " EBITDA margin" : "profitability to be confirmed";
+  const P = practiceOf(deal);
+  const term = practiceTerm(deal);
+  const risk = situationRisk(deal, m);
+  const opps = buildOpportunities(deal, m);
+  const top = opps.ranked[0];
+
+  const deadline =
+    s.urgency === "Weeks" ? "by end of week" : s.urgency === "Exploratory" ? "when convenient this month" : "within two weeks";
 
   return {
     subject: `${deal.company}: recommend advancing to management interviews; ${fmtM(m.revenueLatest)} revenue, ${marginText}`,
-    answer: `Recommendation: advance ${deal.company} to the management interview phase. The financial profile supports the ${practiceOf(deal).frame ? "engagement" : deal.dealType.toLowerCase()} thesis, subject to the diligence items below.`,
+    answer: `Recommendation: advance ${deal.company} to the management interview phase, leading with ${top.name.toLowerCase()}. The financial profile supports the ${P.frame ? "engagement" : deal.dealType.toLowerCase()} thesis, subject to the diligence items below.`,
     soWhat: `This matters now because the historical financials show ${m.growthWord} growth (${fmtPct(m.revenueCAGR)} CAGR) with ${marginText}, and the open questions are answerable within a two week interview window.`,
-    ask: `Decision needed: approve interview scheduling and data room access by end of week to hold the timeline.`,
+    ask: `Decision needed: approve interview scheduling and data room access ${deadline} to hold the timeline.`,
     points: [
       {
         lead: "Directional value",
         text: (() => {
           const sc = computeScenarios(deal, m);
-          const term = practiceTerm(deal);
           return `The model shows annual ${term} value of ${fmtM(sc.conservative.total)} conservative to ${fmtM(sc.aggressive.total)} aggressive (${fmtM(sc.midpoint.total)} midpoint), on ${fmtM(m.revenueLatest)} of ${m.lastYear} revenue. Every percentage sits in a labeled input cell, so the assumptions can be flexed directly.`;
         })(),
       },
@@ -596,18 +671,12 @@ function buildEmail(deal, m) {
         lead: "Key sensitivity",
         text: `A one point change in the growth assumption moves year five revenue by roughly ${fmtM(m.revenueLatest * 0.05)}; growth quality is the single most valuable interview topic.`,
       },
-      practiceOf(deal).emailRisk || {
-        lead: "Primary risk",
-        text:
-          deal.dealType === "Divestiture" || deal.dealType === "Carve out"
-            ? "Separation complexity is unquantified; TSA scope and standalone costs could materially change the economics."
-            : "Synergy capture depends on procurement and G&A overlap that has not yet been validated bottom up.",
-      },
+      { lead: risk.lead, text: risk.text },
     ],
     nextSteps: [
       "Conduct management interviews using the attached guide (weeks 1 to 2).",
-      "Size the top three synergy opportunities bottom up (weeks 2 to 3).",
-      "Fold validated findings into the deal model and reconvene (week 4).",
+      `Size the top three ${term} opportunities bottom up (weeks 2 to 3).`,
+      "Fold validated findings into the model and reconvene (week 4).",
     ],
     close: "Full analysis in the attached model, summary, and interview guide. Happy to walk through the assumptions.",
   };

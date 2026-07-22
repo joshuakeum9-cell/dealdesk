@@ -313,6 +313,34 @@ textarea { resize: vertical; }
   font-size: 14px; color: var(--ink);
 }
 
+/* Manual financials entry */
+.manual-panel {
+  border: 1px solid var(--border-light); border-radius: var(--r-md);
+  padding: 20px; margin-bottom: 20px; background: var(--canvas);
+}
+.manual-grid {
+  display: grid; grid-template-columns: 120px repeat(4, 1fr); gap: 8px;
+  align-items: center; margin-bottom: 14px;
+}
+.manual-head {
+  font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.28px;
+  text-transform: uppercase; color: var(--slate);
+}
+.manual-grid input {
+  font-family: var(--font-ui); font-size: 14px; color: var(--ink);
+  border: 1px solid var(--hairline); border-radius: var(--r-xs);
+  padding: 8px 10px; width: 100%;
+}
+.manual-grid input:focus { outline: none; border-color: var(--focus-blue); }
+.manual-year { background: var(--soft-stone); }
+.manual-status { margin-left: 12px; font-size: 13px; color: var(--deep-green); }
+
+/* Sample data warning */
+.warn-box {
+  background: #fff0ec; border: 1px solid var(--coral-soft); border-radius: var(--r-sm);
+  padding: 12px 16px; margin-top: 14px; font-size: 13px; color: var(--ink);
+}
+
 /* Upload zones: stone surfaces, generous radius */
 .upload-zones { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .upload-zone {

@@ -137,6 +137,41 @@ function initPickers() {
   });
 }
 
+/* ---------- Manual financials entry ---------- */
+
+function toggleManual() {
+  const panel = document.getElementById("manual-panel");
+  panel.hidden = !panel.hidden;
+}
+
+function applyManualFinancials() {
+  const num = (id) => {
+    const v = document.getElementById(id).value.trim();
+    return v === "" ? null : Number(v);
+  };
+  const cols = [0, 1, 2, 3];
+  const years = [], revenue = [], cogs = [], opex = [];
+  for (const i of cols) {
+    const r = num("mr-" + i);
+    if (r === null || !Number.isFinite(r)) continue;
+    years.push(num("my-" + i) || 2021 + i);
+    revenue.push(r);
+    cogs.push(num("mc-" + i));
+    opex.push(num("mo-" + i));
+  }
+  const status = document.getElementById("manual-status");
+  if (revenue.length < 2) {
+    status.textContent = "Enter revenue for at least two years.";
+    return;
+  }
+  const series = { revenue };
+  if (cogs.every((v) => v !== null)) series.cogs = cogs;
+  if (opex.every((v) => v !== null)) series.opex = opex;
+  state.financials = { years, series, source: "manual" };
+  status.textContent = "Applied: " + revenue.length + " years of financials.";
+  addFileChip("financials", "Manual entry (" + years[0] + " to " + years[years.length - 1] + ")", "applied");
+}
+
 function loadSampleCompany() {
   state.financials = SAMPLE_FINANCIALS;
   const f = document.getElementById("f-company");
@@ -152,6 +187,7 @@ function loadSampleCompany() {
 
 function getDeal() {
   const val = (id, fallback) => document.getElementById(id).value.trim() || fallback;
+  const sval = (id) => document.getElementById(id).value;
   const practice = document.querySelector('input[name="practice"]:checked');
   return {
     practice: practice ? practice.value : "financial",
@@ -160,8 +196,33 @@ function getDeal() {
     dealType: document.getElementById("f-dealtype").value,
     revenueBand: document.getElementById("f-revenue").value,
     context: document.getElementById("f-context").value.trim(),
+    situation: {
+      goal: sval("s-goal"),
+      marginTrend: sval("s-margin"),
+      revenueDriver: sval("s-driver"),
+      concentration: sval("s-concentration"),
+      capacity: sval("s-capacity"),
+      costProgram: sval("s-costprog"),
+      competition: sval("s-competition"),
+      urgency: sval("s-urgency"),
+    },
   };
 }
+
+// The goal dropdown offers different options per practice
+function refreshGoalOptions() {
+  const practice = document.querySelector('input[name="practice"]:checked');
+  const goals = PRACTICE_GOALS[practice ? practice.value : "financial"] || [];
+  const sel = document.getElementById("s-goal");
+  const current = sel.value;
+  sel.innerHTML = '<option value="">Not specified</option>' +
+    goals.map((g) => `<option>${g}</option>`).join("");
+  if (goals.includes(current)) sel.value = current;
+}
+
+document.querySelectorAll('input[name="practice"]').forEach((r) =>
+  r.addEventListener("change", refreshGoalOptions)
+);
 
 function fillReview() {
   const deal = getDeal();
@@ -173,12 +234,25 @@ function fillReview() {
   const total = Object.values(state.uploads).reduce((n, arr) => n + arr.length, 0);
   document.getElementById("r-files").textContent =
     total > 0 ? total + " file" + (total > 1 ? "s" : "") : "None (sample data will be used)";
+
+  // Warn loudly when a named company would get fictional demo numbers
+  const usingSample = !state.financials || state.financials.source === "sample";
+  document.getElementById("sample-warning").hidden = !usingSample;
 }
 
 /* ---------- Generation ---------- */
 
 function runGeneration() {
   state.deal = getDeal();
+  // Guard: a real company name with no real numbers needs explicit consent
+  const usingSample = !state.financials || state.financials.source === "sample";
+  if (usingSample && state.deal.company !== "Meridian Components Inc.") {
+    const ok = confirm(
+      "No financial statements were provided for " + state.deal.company +
+      ". The documents will use fictional demo numbers, clearly labeled as illustrative. Continue anyway?"
+    );
+    if (!ok) { nextStep(2); return; }
+  }
   if (!state.financials) state.financials = SAMPLE_FINANCIALS;
   state.metrics = computeMetrics(state.financials);
 
@@ -358,3 +432,4 @@ document.addEventListener("keydown", (e) => {
 });
 
 initPickers();
+refreshGoalOptions();

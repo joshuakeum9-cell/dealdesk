@@ -293,6 +293,7 @@ async function generateSummaryDocx(deal, m) {
     bodyPara(
       `${deal.company} operates in the ${(deal.industry || "target").toLowerCase()} sector with reported revenue of ${fmtM(m.revenueLatest)} in ${fyLabel(m.lastYear)}. ${P.overview(deal, m)}`
     ),
+    ...situationSnapshotParas(deal),
     summaryBox([
       para(run("What matters most", { serif: true, size: 24, bold: true, color: THEME.ink }), { after: 120 }),
       ...findings.map((f, i) => findingPara(i + 1, f.lead, f.text)),
@@ -317,16 +318,15 @@ async function generateSummaryDocx(deal, m) {
     productsTable(),
     sourceLine("Source: Company financial statements; segment reporting where available"),
 
-    h1("6. Other"),
+    ...analystNotesSection(deal),
+
+    h1(analystNotesSection(deal).length ? "7. Other" : "6. Other"),
     bodyPara("The most important remaining topics to orient the team, prioritized for this engagement:", {}),
+    (() => {
+      const risk = situationRisk(deal, m);
+      return bodyPara(`${risk.lead}: ${risk.text}`, { bullet: true });
+    })(),
     bodyPara("Customer and supplier concentration: confirm the share of revenue tied to the top five relationships.", { bullet: true }),
-    bodyPara(
-      P.riskBullet ||
-        (deal.dealType === "Divestiture" || deal.dealType === "Carve out"
-          ? "Separation complexity: map entangled systems, contracts, and shared services before signing."
-          : "Integration readiness: identify the operational dependencies that determine speed to value."),
-      { bullet: true }
-    ),
     bodyPara("Next step: management interviews using the accompanying interview guide.", { bullet: true }),
     para(run("Prepared with DealDesk. High level by design; figures may not sum due to rounding.", { size: 16, color: THEME.gray }), { before: 300 }),
   ];
@@ -360,6 +360,41 @@ function placeholderTable(header, rows) {
       ...rows.map((r) => new docx.TableRow({ children: r.map((c) => cell(c, false)) })),
     ],
   });
+}
+
+// One line summary of the structured situation answers, when any exist
+function situationSnapshotParas(deal) {
+  const s = situationOf(deal);
+  const bits = [];
+  if (s.goal) bits.push(`stated goal is ${s.goal.toLowerCase()}`);
+  if (s.marginTrend) bits.push(`margin ${s.marginTrend.toLowerCase()}`);
+  if (s.revenueDriver === "Price") bits.push("growth driven by price and mix");
+  else if (s.revenueDriver === "Volume") bits.push("growth driven by volume");
+  else if (s.revenueDriver === "Declining") bits.push("demand softening");
+  if (s.concentration === "Yes") bits.push("significant customer concentration");
+  if (s.capacity === "Excess") bits.push("excess capacity in the network");
+  else if (s.capacity === "Tight") bits.push("capacity running tight");
+  if (s.costProgram === "Yes") bits.push("cost program underway");
+  if (s.competition === "Intensifying") bits.push("competition intensifying");
+  if (!bits.length) return [];
+  return [bodyPara("Situation assessment: " + bits.join("; ") + ".")];
+}
+
+// Long pasted context becomes its own clean section instead of being
+// squeezed into a framing sentence. House style: no dashes.
+function analystNotesSection(deal) {
+  const ctx = (deal.context || "").trim();
+  if (ctx.length <= 160) return [];
+  const softened = ctx
+    .replace(/(\d)\s*[-–—]\s*(\d)/g, "$1 to $2")
+    .replace(/[—–]/g, ", ")
+    .replace(/-/g, " ");
+  const paras = softened.split(/\n+/).map((p) => p.trim()).filter(Boolean);
+  return [
+    h1("6. Analyst notes"),
+    bodyPara("Notes provided with the engagement request, reproduced for the team:", {}),
+    ...paras.map((p) => bodyPara(p)),
+  ];
 }
 
 function peopleTable() {
