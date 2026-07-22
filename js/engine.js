@@ -28,12 +28,24 @@ const ROW_KEYWORDS = {
 };
 
 // Parse the first sheet of an uploaded workbook into {years, series}.
-// Expects rows of "label, value, value, ..." with a header row of years.
+// Handles the standard layout (metrics down, years across) and the
+// transposed layout (years down, metrics across). Quarterly data is
+// rejected rather than silently treated as annual.
 function parseFinancialsWorkbook(arrayBuffer) {
   const wb = XLSX.read(arrayBuffer, { type: "array" });
   const sheet = wb.Sheets[wb.SheetNames[0]];
   const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+  return parseAoa(aoa) || parseAoa(transposeAoa(aoa));
+}
 
+function transposeAoa(aoa) {
+  const width = Math.max(0, ...aoa.map((r) => (r ? r.length : 0)));
+  const out = [];
+  for (let c = 0; c < width; c++) out.push(aoa.map((r) => (r ? r[c] : null)));
+  return out;
+}
+
+function parseAoa(aoa) {
   let years = null;
   const series = {};
 
@@ -45,13 +57,19 @@ function parseFinancialsWorkbook(arrayBuffer) {
     if (!years) {
       const asYears = values.map(yearFromCell).filter(Boolean);
       if (asYears.length >= 2) {
+        // Duplicate years mean sub annual columns (Q1 2024, Q2 2024...).
+        // Refuse rather than compute a fake annual growth rate.
+        if (new Set(asYears).size !== asYears.length) return null;
         years = asYears;
         continue;
       }
     }
     for (const [key, re] of Object.entries(ROW_KEYWORDS)) {
       if (re.test(label) && !series[key]) {
-        const nums = values.map(toNumber).filter((v) => v !== null);
+        let nums = values.map(toNumber).filter((v) => v !== null);
+        // Cost and revenue lines are stored as magnitudes; sheets that
+        // show expenses as (800) or -800 mean the same cost.
+        if (key !== "revenue") nums = nums.map(Math.abs);
         if (nums.length >= 2) series[key] = nums;
       }
     }
@@ -74,8 +92,11 @@ function yearFromCell(v) {
 
 function toNumber(v) {
   if (typeof v === "number") return v;
-  const n = Number(String(v).replace(/[$,()\s]/g, ""));
-  return Number.isFinite(n) ? n : null;
+  const s = String(v).trim();
+  const negative = /^\(.*\)$/.test(s);
+  const n = Number(s.replace(/[$,()\s]/g, ""));
+  if (!Number.isFinite(n)) return null;
+  return negative ? -n : n;
 }
 
 /* ---------- Metrics ---------- */
@@ -132,6 +153,7 @@ function growthWord(cagr) {
 
 function fmtM(v) {
   if (v === null || v === undefined) return "n/a";
+  if (Math.abs(v) >= 10000) return "$" + (v / 1000).toFixed(1) + "B";
   return "$" + v.toFixed(1) + "M";
 }
 
@@ -368,6 +390,12 @@ function practiceOf(deal) {
 
 const PRACTICE_TERMS = { strategy: "opportunity", operations: "improvement", financial: "synergy" };
 
+// The M&A guide is named for the deal type actually selected
+function guideTitleOf(deal) {
+  const P = practiceOf(deal);
+  return P === PRACTICES.financial ? `${deal.dealType} Interview Guide` : P.guideTitle;
+}
+
 function practiceTerm(deal) {
   return PRACTICE_TERMS[deal.practice] || "synergy";
 }
@@ -399,16 +427,25 @@ function situationRisk(deal, m) {
 function buildScenarioInputs(deal, m) {
   const lines = [];
   if (m.series.cogs) {
-    lines.push({ key: "cogs", label: "Cost of goods sold", base: m.series.cogs[m.series.cogs.length - 1], low: 0.05, high: 0.08 });
+    // Range depends on the cost structure, not a fixed guess: thin
+    // margin businesses (retail) cannot cut COGS 8%; service and
+    // software businesses have little COGS to cut at all.
+    const cogsShare = m.series.cogs[m.series.cogs.length - 1] / m.revenueLatest;
+    const [low, high] = cogsShare > 0.75 ? [0.01, 0.03] : cogsShare < 0.35 ? [0.03, 0.05] : [0.05, 0.08];
+    lines.push({ key: "cogs", label: "Cost of goods sold", base: m.series.cogs[m.series.cogs.length - 1], low, high });
   }
   if (m.series.opex) {
     lines.push({ key: "opex", label: "Opex / G&A (back office)", base: m.series.opex[m.series.opex.length - 1], low: 0.1, high: 0.25 });
   }
+  // Revenue uplift flows through at the company margin, but a negative
+  // or unknown margin gets a flagged default instead of nonsense.
+  const flowDefaulted = m.ebitdaMargin === null || m.ebitdaMargin < 0.05;
   return {
     revenue: m.revenueLatest,
     revLow: 0.05,
     revHigh: 0.1,
-    flowMargin: m.ebitdaMargin !== null ? Math.round(m.ebitdaMargin * 1000) / 1000 : 0.15,
+    flowMargin: flowDefaulted ? 0.15 : Math.round(m.ebitdaMargin * 1000) / 1000,
+    flowDefaulted,
     lines,
   };
 }
@@ -444,7 +481,9 @@ function buildNarrative(deal, m) {
   }
 
   let marginSentence = m.ebitdaMargin !== null
-    ? m.ebitdaMargin > 0.2
+    ? m.ebitdaMargin < 0
+      ? `The business is loss making at the EBITDA line (${fmtPct(m.ebitdaMargin)} margin in ${m.lastYear}); stabilizing the cost base comes before any value creation agenda.`
+      : m.ebitdaMargin > 0.2
       ? `EBITDA margin of ${fmtPct(m.ebitdaMargin)} is strong for the sector and suggests durable pricing power or cost discipline.`
       : m.ebitdaMargin > 0.1
       ? `EBITDA margin of ${fmtPct(m.ebitdaMargin)} is within a typical range, with room for operational improvement after close.`
@@ -638,11 +677,19 @@ function buildOpportunities(deal, m) {
   return { groups, ranked };
 }
 
+/* ---------- Verdict: the recommendation follows the numbers ---------- */
+
+// proceed | caution | pause
+function verdictOf(m) {
+  if (m.revenueCAGR < -0.05 || (m.ebitdaMargin !== null && m.ebitdaMargin < 0)) return "pause";
+  if (m.revenueCAGR < 0 || (m.ebitdaMargin !== null && m.ebitdaMargin < 0.05)) return "caution";
+  return "proceed";
+}
+
 /* ---------- Email summary (BLUF: answer first, then support) ---------- */
 
 function buildEmail(deal, m) {
   const s = situationOf(deal);
-  const projRev = m.revenueLatest * Math.pow(1 + Math.max(m.revenueCAGR, 0.02), 5);
   const marginText =
     m.ebitdaMargin !== null ? fmtPct(m.ebitdaMargin) + " EBITDA margin" : "profitability to be confirmed";
   const P = practiceOf(deal);
@@ -650,27 +697,46 @@ function buildEmail(deal, m) {
   const risk = situationRisk(deal, m);
   const opps = buildOpportunities(deal, m);
   const top = opps.ranked[0];
+  const verdict = verdictOf(m);
+  const thesis = P.frame ? "engagement" : deal.dealType.toLowerCase();
 
   const deadline =
     s.urgency === "Weeks" ? "by end of week" : s.urgency === "Exploratory" ? "when convenient this month" : "within two weeks";
 
+  const subjects = {
+    proceed: `${deal.company}: recommend advancing to management interviews; ${fmtM(m.revenueLatest)} revenue, ${marginText}`,
+    caution: `${deal.company}: proceed with caution; ${fmtM(m.revenueLatest)} revenue, ${marginText}`,
+    pause: `${deal.company}: recommend a focused diagnostic before advancing; ${fmtM(m.revenueLatest)} revenue, ${marginText}`,
+  };
+  const answers = {
+    proceed: `Recommendation: advance ${deal.company} to the management interview phase, leading with ${top.name.toLowerCase()}. The financial profile supports the ${thesis} thesis, subject to the diligence items below.`,
+    caution: `Recommendation: proceed to management interviews with caution. Growth or profitability is below par, so the agenda below is built to test whether the ${thesis} thesis still holds before further commitment.`,
+    pause: `Recommendation: pause before advancing. The provided statements show ${m.revenueCAGR < -0.05 ? "declining revenue" : "losses at the EBITDA line"}, which the ${thesis} thesis cannot yet support; commission a focused margin and cash diagnostic first, then revisit.`,
+  };
+  const soWhats = {
+    proceed: `This matters now because the historical financials show ${m.growthWord} growth (${fmtPct(m.revenueCAGR)} CAGR) with ${marginText}, and the open questions are answerable within a two week interview window.`,
+    caution: `The historical financials show ${m.growthWord} growth (${fmtPct(m.revenueCAGR)} CAGR) with ${marginText}; the value case depends on interview answers, not on momentum.`,
+    pause: `The historical financials show ${m.growthWord} growth (${fmtPct(m.revenueCAGR)} CAGR) with ${marginText}; committing before a diagnostic risks anchoring the work on a broken baseline.`,
+  };
+
+  // Sensitivity anchored to what the model actually computes
+  const sc = computeScenarios(deal, m);
+  const bigLine = sc.inputs.lines.slice().sort((a, b) => b.base - a.base)[0];
+  const sensitivity = bigLine
+    ? `One percentage point of ${term} on ${bigLine.label.toLowerCase()} is worth about ${fmtM(bigLine.base * 0.01)} a year; validating the per line ranges is the most valuable interview outcome.`
+    : `One percentage point of revenue uplift at the assumed flow through margin is worth about ${fmtM(m.revenueLatest * 0.01 * sc.inputs.flowMargin)} a year; validating that margin is the most valuable interview outcome.`;
+
   return {
-    subject: `${deal.company}: recommend advancing to management interviews; ${fmtM(m.revenueLatest)} revenue, ${marginText}`,
-    answer: `Recommendation: advance ${deal.company} to the management interview phase, leading with ${top.name.toLowerCase()}. The financial profile supports the ${P.frame ? "engagement" : deal.dealType.toLowerCase()} thesis, subject to the diligence items below.`,
-    soWhat: `This matters now because the historical financials show ${m.growthWord} growth (${fmtPct(m.revenueCAGR)} CAGR) with ${marginText}, and the open questions are answerable within a two week interview window.`,
-    ask: `Decision needed: approve interview scheduling and data room access ${deadline} to hold the timeline.`,
+    subject: subjects[verdict],
+    answer: answers[verdict],
+    soWhat: soWhats[verdict],
+    ask: `Decision needed: approve ${verdict === "pause" ? "the diagnostic scope" : "interview scheduling and data room access"} ${deadline} to hold the timeline.`,
     points: [
       {
         lead: "Directional value",
-        text: (() => {
-          const sc = computeScenarios(deal, m);
-          return `The model shows annual ${term} value of ${fmtM(sc.conservative.total)} conservative to ${fmtM(sc.aggressive.total)} aggressive (${fmtM(sc.midpoint.total)} midpoint), on ${fmtM(m.revenueLatest)} of ${m.lastYear} revenue. Every percentage sits in a labeled input cell, so the assumptions can be flexed directly.`;
-        })(),
+        text: `The model shows annual ${term} value of ${fmtM(sc.conservative.total)} conservative to ${fmtM(sc.aggressive.total)} aggressive (${fmtM(sc.midpoint.total)} midpoint), on ${fmtM(m.revenueLatest)} of ${m.lastYear} revenue.${sc.inputs.flowDefaulted ? " Note: revenue uplift uses a defaulted 15% flow through margin because the company margin is unavailable or negative; treat that line as illustrative." : ""} Every percentage sits in a labeled input cell, so the assumptions can be flexed directly.`,
       },
-      {
-        lead: "Key sensitivity",
-        text: `A one point change in the growth assumption moves year five revenue by roughly ${fmtM(m.revenueLatest * 0.05)}; growth quality is the single most valuable interview topic.`,
-      },
+      { lead: "Key sensitivity", text: sensitivity },
       { lead: risk.lead, text: risk.text },
     ],
     nextSteps: [

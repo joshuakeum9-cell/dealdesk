@@ -258,7 +258,7 @@ function runGeneration() {
 
   // Retitle the output cards for the selected practice
   const P = practiceOf(state.deal);
-  document.querySelector('.output-card[data-output="guide"] h3').textContent = P.guideTitle;
+  document.querySelector('.output-card[data-output="guide"] h3').textContent = guideTitleOf(state.deal);
   document.querySelector('.output-card[data-output="synergy"] h3').textContent = P.deckShort;
 
   nextStep(4);
@@ -369,7 +369,7 @@ function previewOutput(key) {
         <li>Recommended next steps</li></ul>`,
     },
     guide: {
-      title: `${P.guideTitle} (preview)`,
+      title: `${guideTitleOf(deal)} (preview)`,
       body:
         `<div class="preview-note">${srcNote}</div>` +
         buildInterviewQuestions(deal)

@@ -422,17 +422,22 @@ function productsTable() {
 
 function financialsTable(m) {
   // PwC template: historical years plus a projection column, with an
-  // EBITDA margin % row. Projection scales the latest year at the CAGR.
-  const g = Math.max(m.revenueCAGR, 0.02);
+  // EBITDA margin % row. The projection follows the ACTUAL trend, even
+  // when it is negative; growing a declining business would contradict
+  // the narrative. Large companies switch to $B units.
+  const g = Math.max(-0.5, Math.min(0.5, m.revenueCAGR));
   const last = m.series.revenue.length - 1;
+  const div = m.revenueLatest >= 10000 ? 1000 : 1;
+  const unit = div === 1000 ? "$B" : "$M";
   const proj = (series) => series[last] * (1 + g);
+  const fN = (v) => fmtNum(v / div);
 
-  const header = ["$M", ...m.years.map((y) => fyLabel(y)), fyLabel(m.lastYear + 1, "F")];
-  const rows = [["Revenue", ...m.series.revenue.map(fmtNum), fmtNum(proj(m.series.revenue))]];
-  if (m.series.cogs) rows.push(["COGS", ...m.series.cogs.map((v) => fmtNum(-v)), fmtNum(-proj(m.series.cogs))]);
-  if (m.series.opex) rows.push(["SG&A / Opex", ...m.series.opex.map((v) => fmtNum(-v)), fmtNum(-proj(m.series.opex))]);
+  const header = [unit, ...m.years.map((y) => fyLabel(y)), fyLabel(m.lastYear + 1, "F")];
+  const rows = [["Revenue", ...m.series.revenue.map(fN), fN(proj(m.series.revenue))]];
+  if (m.series.cogs) rows.push(["COGS", ...m.series.cogs.map((v) => fN(-v)), fN(-proj(m.series.cogs))]);
+  if (m.series.opex) rows.push(["SG&A / Opex", ...m.series.opex.map((v) => fN(-v)), fN(-proj(m.series.opex))]);
   const totalRow = m.ebitdaSeries
-    ? ["EBITDA", ...m.ebitdaSeries.map(fmtNum), fmtNum(proj(m.ebitdaSeries))]
+    ? ["EBITDA", ...m.ebitdaSeries.map(fN), fN(proj(m.ebitdaSeries))]
     : null;
   const marginRow = m.ebitdaSeries
     ? [
@@ -754,7 +759,7 @@ function generateModelXlsx(deal, m) {
   refs.revLow = "B" + aoaI.length;
   push(["Revenue uplift, high end", inp.revHigh]);
   refs.revHigh = "B" + aoaI.length;
-  push(["Flow through margin on new revenue", inp.flowMargin]);
+  push(["Flow through margin on new revenue" + (inp.flowDefaulted ? " (defaulted: company margin unavailable or negative)" : ""), inp.flowMargin]);
   refs.margin = "B" + aoaI.length;
   push([null, null]);
   push([`Cost ${term} assumptions, each applied to its own cost line only (INPUTS)`, null]);
