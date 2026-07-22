@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DealDesk | M&A Deliverable Generator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+  <!-- ============ NAV ============ -->
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="#" onclick="goHome(); return false;">
+        <span class="brand-mark">DD</span>
+        <span class="brand-name">DealDesk</span>
+      </a>
+      <nav class="nav-links">
+        <a href="#how" onclick="goHome('how'); return false;">How it works</a>
+        <a href="#deliverables" onclick="goHome('deliverables'); return false;">Deliverables</a>
+        <a href="#about" onclick="goHome('about'); return false;">About</a>
+      </nav>
+      <button class="btn btn-primary btn-sm" onclick="startWorkflow()">Start a deal</button>
+    </div>
+  </header>
+
+  <!-- ============ VIEW: LANDING ============ -->
+  <main id="view-landing" class="view active">
+
+    <section class="hero">
+      <div class="hero-inner">
+        <p class="eyebrow">M&A advisory, accelerated</p>
+        <h1>Upload a target company.<br />Walk out with the deal package.</h1>
+        <p class="hero-sub">DealDesk turns raw company financials and diligence documents into four
+          deliverables: a business summary, a management interview guide,
+          an opportunity presentation, and a working Excel model with an executive email summary.
+          Every output is tailored to your practice: strategy, operations, or M&amp;A.</p>
+        <div class="hero-actions">
+          <button class="btn btn-primary btn-lg" onclick="startWorkflow()">Generate a deal package</button>
+          <button class="btn btn-ghost btn-lg" onclick="goHome('how')">See how it works</button>
+        </div>
+      </div>
+
+      <div class="hero-visual" aria-hidden="true">
+        <div class="doc-stack">
+          <div class="doc-card doc-1">
+            <span class="doc-tag tag-doc">DOCX</span>
+            <span class="doc-title">Business Summary</span>
+            <div class="doc-lines"><i style="width:90%"></i><i style="width:75%"></i><i style="width:82%"></i></div>
+          </div>
+          <div class="doc-card doc-2">
+            <span class="doc-tag tag-ppt">PPTX</span>
+            <span class="doc-title">Synergy Presentation</span>
+            <div class="doc-lines"><i style="width:70%"></i><i style="width:85%"></i><i style="width:60%"></i></div>
+          </div>
+          <div class="doc-card doc-3">
+            <span class="doc-tag tag-xls">XLSX</span>
+            <span class="doc-title">Deal Model</span>
+            <div class="doc-grid">
+              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW IT WORKS -->
+    <section class="section" id="how">
+      <div class="section-inner">
+        <p class="eyebrow">How it works</p>
+        <h2>Three steps from data room to deliverables</h2>
+        <div class="steps-row">
+          <div class="step-card">
+            <span class="step-num">01</span>
+            <h3>Describe the engagement</h3>
+            <p>Choose your consulting practice, then enter the target company and strategic context. This frames every deliverable that follows.</p>
+          </div>
+          <div class="step-card">
+            <span class="step-num">02</span>
+            <h3>Upload the inputs</h3>
+            <p>Drop in financial statements, org charts, or diligence notes. Excel, PDF, and Word files are all fair game.</p>
+          </div>
+          <div class="step-card">
+            <span class="step-num">03</span>
+            <h3>Generate the package</h3>
+            <p>DealDesk drafts all four deliverables at once. Review each one, then download the full package.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DELIVERABLES -->
+    <section class="section section-alt" id="deliverables">
+      <div class="section-inner">
+        <p class="eyebrow">The deliverable package</p>
+        <h2>Four deliverables, tailored to your practice</h2>
+        <p class="deliv-intro">Choose your consulting practice, whether strategy, operations, or M&amp;A, and every document adapts: the analytical lens, the interview questions, the opportunity hypotheses, and the recommendation. Formats follow the deliverable standards of a Big 4 management consulting simulation.</p>
+        <div class="deliv-grid">
+          <div class="deliv-card">
+            <div class="deliv-icon icon-doc">&#9776;</div>
+            <h3>Business Summary</h3>
+            <p>A concise brief that leads with the summary and numbered, quantified findings, framed through your practice's lens. The document your partner reads before the kickoff call.</p>
+            <span class="deliv-format">Word document</span>
+          </div>
+          <div class="deliv-card">
+            <div class="deliv-icon icon-guide">?</div>
+            <h3>Management Interview Guide</h3>
+            <p>15 to 20 numbered questions grouped into lettered topics with space for answers: motivation and entanglement for M&amp;A, market and growth options for strategy, process and supply chain for operations.</p>
+            <span class="deliv-format">Word document</span>
+          </div>
+          <div class="deliv-card">
+            <div class="deliv-icon icon-ppt">&#9645;</div>
+            <h3>Opportunity Presentation</h3>
+            <p>A three slide loop with action titles: slide one summarizes and signposts, slides two and three expand each category in order. Synergies for M&amp;A, options for strategy, levers for operations.</p>
+            <span class="deliv-format">PowerPoint deck</span>
+          </div>
+          <div class="deliv-card">
+            <div class="deliv-icon icon-xls">&#8721;</div>
+            <h3>Excel Model + Email Summary</h3>
+            <p>A directional value model with labeled input cells and conservative, midpoint, and aggressive scenarios, paired with an answer first executive email readable in under a minute.</p>
+            <span class="deliv-format">Excel workbook + email draft</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ABOUT -->
+    <section class="section" id="about">
+      <div class="section-inner about-inner">
+        <p class="eyebrow">About this project</p>
+        <h2>Why DealDesk exists</h2>
+        <p class="about-text">Management consulting deliverables follow patterns: the same document types, the
+          same analytical structure, the same executive audience. DealDesk explores how much of that structure
+          can be systematized so consultants spend their time on judgment, not formatting. It is a portfolio
+          project built around the deliverables of a Big 4 M&A advisory simulation.</p>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        <span>DealDesk. A portfolio project by Joshua Keum.</span>
+        <span class="footer-muted">Demo only. No client data is stored.</span>
+      </div>
+    </footer>
+  </main>
+
+  <!-- ============ VIEW: WORKFLOW ============ -->
+  <main id="view-workflow" class="view">
+    <div class="workflow-shell">
+
+      <!-- Stepper -->
+      <ol class="stepper" id="stepper">
+        <li class="stepper-item active" data-step="1"><span class="stepper-dot">1</span><span class="stepper-label">Deal setup</span></li>
+        <li class="stepper-item" data-step="2"><span class="stepper-dot">2</span><span class="stepper-label">Upload inputs</span></li>
+        <li class="stepper-item" data-step="3"><span class="stepper-dot">3</span><span class="stepper-label">Review &amp; generate</span></li>
+        <li class="stepper-item" data-step="4"><span class="stepper-dot">4</span><span class="stepper-label">Deliverables</span></li>
+      </ol>
+
+      <!-- STEP 1: Deal setup -->
+      <section class="wf-step active" id="step-1">
+        <div class="wf-header">
+          <h2>Set up the deal</h2>
+          <p>This context frames all four deliverables, so be as specific as you can.</p>
+        </div>
+        <form class="wf-form" onsubmit="return false;">
+          <div class="form-field">
+            <label>What type of consultant are you? <span class="req">*</span></label>
+            <p class="brand-hint">Every deliverable is tailored to your practice: the summary lens, the interview questions, the opportunity presentation, and the executive email.</p>
+            <div class="practice-grid">
+              <label class="practice-card"><input type="radio" name="practice" value="strategy" />
+                <span class="practice-name">Strategy</span>
+                <span class="practice-blurb">Long term goals, market entry, competitive positioning</span></label>
+              <label class="practice-card"><input type="radio" name="practice" value="operations" />
+                <span class="practice-name">Operations</span>
+                <span class="practice-blurb">Efficiency, supply chain, cost reduction, workflows</span></label>
+              <label class="practice-card"><input type="radio" name="practice" value="financial" checked />
+                <span class="practice-name">Financial / M&amp;A</span>
+                <span class="practice-blurb">M&amp;A advisory, divestitures, synergies, deal value</span></label>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field">
+              <label for="f-company">Target company name <span class="req">*</span></label>
+              <input id="f-company" type="text" placeholder="e.g., Meridian Components Inc." />
+            </div>
+            <div class="form-field">
+              <label for="f-industry">Industry</label>
+              <input id="f-industry" type="text" placeholder="e.g., Industrial manufacturing" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label for="f-dealtype">Deal type</label>
+              <select id="f-dealtype">
+                <option>Acquisition</option>
+                <option>Divestiture</option>
+                <option>Carve out</option>
+                <option>Merger</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="f-revenue">Approximate annual revenue</label>
+              <select id="f-revenue">
+                <option>Under $10M</option>
+                <option>$10M to $50M</option>
+                <option selected>$50M to $250M</option>
+                <option>$250M to $1B</option>
+                <option>Over $1B</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-field">
+            <label for="f-context">Strategic context</label>
+            <textarea id="f-context" rows="4" placeholder="What is the client trying to accomplish? e.g., The client is evaluating the acquisition of this target to expand into the Midwest market and expects meaningful procurement synergies."></textarea>
+          </div>
+
+          <fieldset class="brand-fieldset">
+            <legend>Client branding (optional)</legend>
+            <p class="brand-hint">Deliverables default to a neutral "ghost draft" style. Set the client's identity here to enable client branded finals; the structure and logic never change.</p>
+            <div class="form-row form-row-3">
+              <div class="form-field">
+                <label for="f-brand-primary">Primary color</label>
+                <input type="color" id="f-brand-primary" value="#0A1F2E" />
+              </div>
+              <div class="form-field">
+                <label for="f-brand-accent">Accent color</label>
+                <input type="color" id="f-brand-accent" value="#1F4CFF" />
+              </div>
+              <div class="form-field">
+                <label for="f-fonts">Font pairing</label>
+                <select id="f-fonts">
+                  <option value="georgia" selected>Georgia + Arial (firm standard)</option>
+                  <option value="garamond">Garamond + Calibri</option>
+                  <option value="times">Times New Roman + Segoe UI</option>
+                  <option value="modern">Arial only (modern)</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-field">
+              <label>Client logo</label>
+              <button type="button" class="btn btn-sm btn-ghost" onclick="openPicker('logo')">Upload logo (.png or .jpg)</button>
+              <div class="upload-files" id="files-logo"></div>
+            </div>
+          </fieldset>
+          <div class="wf-actions">
+            <span></span>
+            <button class="btn btn-primary" onclick="nextStep(2)">Continue to uploads</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- STEP 2: Uploads -->
+      <section class="wf-step" id="step-2">
+        <div class="wf-header">
+          <h2>Upload the inputs</h2>
+          <p>Add whatever you have. More context produces sharper deliverables, but only the financials are required.</p>
+        </div>
+
+        <div class="demo-banner">
+          <span>No files handy?</span>
+          <button class="btn btn-sm btn-ghost" onclick="loadSampleCompany()">Load the sample company</button>
+        </div>
+
+        <div class="upload-zones">
+          <div class="upload-zone" id="zone-financials" onclick="openPicker('financials')">
+            <div class="upload-icon">&#8593;</div>
+            <h3>Financial statements <span class="req">*</span></h3>
+            <p>Income statement, balance sheet, or trial balance</p>
+            <span class="upload-hint">.xlsx, .csv, .pdf</span>
+            <div class="upload-files" id="files-financials"></div>
+          </div>
+          <div class="upload-zone" id="zone-org" onclick="openPicker('org')">
+            <div class="upload-icon">&#8593;</div>
+            <h3>Company background</h3>
+            <p>Org charts, CIMs, annual reports, press coverage</p>
+            <span class="upload-hint">.pdf, .docx, .pptx</span>
+            <div class="upload-files" id="files-org"></div>
+          </div>
+          <div class="upload-zone" id="zone-notes" onclick="openPicker('notes')">
+            <div class="upload-icon">&#8593;</div>
+            <h3>Diligence notes</h3>
+            <p>Prior interview notes, data room extracts, memos</p>
+            <span class="upload-hint">.docx, .pdf, .txt</span>
+            <div class="upload-files" id="files-notes"></div>
+          </div>
+        </div>
+
+        <div class="wf-actions">
+          <button class="btn btn-ghost" onclick="nextStep(1)">Back</button>
+          <button class="btn btn-primary" onclick="nextStep(3)">Review &amp; generate</button>
+        </div>
+      </section>
+
+      <!-- STEP 3: Review -->
+      <section class="wf-step" id="step-3">
+        <div class="wf-header">
+          <h2>Review and generate</h2>
+          <p>Confirm the deal setup and choose which deliverables to produce.</p>
+        </div>
+
+        <div class="review-grid">
+          <div class="review-card">
+            <h3>Deal summary</h3>
+            <dl class="review-list" id="review-summary">
+              <div><dt>Practice</dt><dd id="r-practice">-</dd></div>
+              <div><dt>Target</dt><dd id="r-company">-</dd></div>
+              <div><dt>Industry</dt><dd id="r-industry">-</dd></div>
+              <div><dt>Deal type</dt><dd id="r-dealtype">-</dd></div>
+              <div><dt>Revenue band</dt><dd id="r-revenue">-</dd></div>
+              <div><dt>Files uploaded</dt><dd id="r-files">-</dd></div>
+            </dl>
+            <button class="btn-link" onclick="nextStep(1)">Edit setup</button>
+          </div>
+
+          <div class="review-card">
+            <h3>Deliverables to generate</h3>
+            <label class="check-row"><input type="checkbox" checked id="c-summary" /> <span>Business summary</span></label>
+            <label class="check-row"><input type="checkbox" checked id="c-guide" /> <span>Divestiture interview guide</span></label>
+            <label class="check-row"><input type="checkbox" checked id="c-synergy" /> <span>Qualitative synergy presentation</span></label>
+            <label class="check-row"><input type="checkbox" checked id="c-model" /> <span>Excel model + email summary</span></label>
+
+            <h3 class="review-subhead">Output branding</h3>
+            <label class="check-row"><input type="radio" name="output-mode" value="ghost" checked /> <span><strong>Ghost draft</strong>: neutral firm style, DRAFT stamps</span></label>
+            <label class="check-row"><input type="radio" name="output-mode" value="branded" /> <span><strong>Client branded final</strong>: client colors, fonts, and logo</span></label>
+          </div>
+        </div>
+
+        <div class="wf-actions">
+          <button class="btn btn-ghost" onclick="nextStep(2)">Back</button>
+          <button class="btn btn-primary btn-lg" onclick="runGeneration()">Generate deal package</button>
+        </div>
+      </section>
+
+      <!-- STEP 4: Deliverables -->
+      <section class="wf-step" id="step-4">
+        <div class="wf-header" id="gen-header">
+          <h2 id="gen-title">Generating your deal package</h2>
+          <p id="gen-sub">Each deliverable is drafted from your inputs. This usually takes under a minute.</p>
+        </div>
+
+        <div class="output-grid" id="output-grid">
+          <div class="output-card" data-output="summary">
+            <div class="output-top">
+              <span class="doc-tag tag-doc">DOCX</span>
+              <span class="output-status status-pending">Queued</span>
+            </div>
+            <h3>Business Summary</h3>
+            <p class="output-desc">Company overview, financial profile, market position, key risks</p>
+            <div class="output-bar"><i></i></div>
+            <div class="output-actions">
+              <button class="btn btn-sm btn-ghost" disabled onclick="previewOutput('summary')">Preview</button>
+              <button class="btn btn-sm btn-primary" disabled onclick="downloadOutput('summary', this)">Download</button>
+            </div>
+          </div>
+
+          <div class="output-card" data-output="guide">
+            <div class="output-top">
+              <span class="doc-tag tag-doc">DOCX</span>
+              <span class="output-status status-pending">Queued</span>
+            </div>
+            <h3>Divestiture Interview Guide</h3>
+            <p class="output-desc">Structured management interview questions by workstream</p>
+            <div class="output-bar"><i></i></div>
+            <div class="output-actions">
+              <button class="btn btn-sm btn-ghost" disabled onclick="previewOutput('guide')">Preview</button>
+              <button class="btn btn-sm btn-primary" disabled onclick="downloadOutput('guide', this)">Download</button>
+            </div>
+          </div>
+
+          <div class="output-card" data-output="synergy">
+            <div class="output-top">
+              <span class="doc-tag tag-ppt">PPTX</span>
+              <span class="output-status status-pending">Queued</span>
+            </div>
+            <h3>Qualitative Synergy Presentation</h3>
+            <p class="output-desc">Synergy hypotheses ranked by impact and achievability</p>
+            <div class="output-bar"><i></i></div>
+            <div class="output-actions">
+              <button class="btn btn-sm btn-ghost" disabled onclick="previewOutput('synergy')">Preview</button>
+              <button class="btn btn-sm btn-primary" disabled onclick="downloadOutput('synergy', this)">Download</button>
+            </div>
+          </div>
+
+          <div class="output-card" data-output="model">
+            <div class="output-top">
+              <span class="doc-tag tag-xls">XLSX</span>
+              <span class="output-status status-pending">Queued</span>
+            </div>
+            <h3>Excel Model + Email Summary</h3>
+            <p class="output-desc">Scenario model with labeled inputs, plus an answer first email draft</p>
+            <div class="output-bar"><i></i></div>
+            <div class="output-actions">
+              <button class="btn btn-sm btn-ghost" disabled onclick="previewOutput('model')">Preview</button>
+              <button class="btn btn-sm btn-primary" disabled onclick="downloadOutput('model', this)">Download</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="wf-actions" id="final-actions" style="visibility:hidden">
+          <button class="btn btn-ghost" onclick="nextStep(3)">Back to review</button>
+          <button class="btn btn-primary btn-lg" onclick="downloadOutput('package', this)">Download full package (.zip)</button>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- ============ PREVIEW MODAL ============ -->
+  <div class="modal-backdrop" id="modal" onclick="if(event.target===this) closeModal()">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="modal-title">Preview</h3>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+  <input type="file" id="picker-financials" accept=".xlsx,.xls,.csv" hidden />
+  <input type="file" id="picker-logo" accept="image/png,image/jpeg" hidden />
+  <input type="file" id="picker-org" accept=".pdf,.docx,.pptx" hidden multiple />
+  <input type="file" id="picker-notes" accept=".docx,.pdf,.txt" hidden multiple />
+
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+  <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/generators.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
