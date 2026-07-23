@@ -330,11 +330,15 @@ async function generateSummaryDocx(deal, m) {
 
     h1(analystNotesSection(deal).length ? "7. Other" : "6. Other"),
     bodyPara("The most important remaining topics to orient the team, prioritized for this engagement:", {}),
-    (() => {
-      const risk = situationRisk(deal, m);
-      return bodyPara(`${risk.lead}: ${risk.text}`, { bullet: true });
-    })(),
-    bodyPara("Customer and supplier concentration: confirm the share of revenue tied to the top five relationships.", { bullet: true }),
+    // The priority risk already leads the findings box; this section adds
+    // topics not covered there instead of repeating it.
+    bodyPara(
+      situationRisk(deal, m).lead === "Customer concentration"
+        ? "Supplier dependence: map the top suppliers by spend and any single points of failure."
+        : "Customer and supplier concentration: confirm the share of revenue tied to the top five relationships.",
+      { bullet: true }
+    ),
+    bodyPara("Quality of reported figures: confirm accounting basis, one time items, and any restatements.", { bullet: true }),
     bodyPara("Next step: management interviews using the accompanying interview guide.", { bullet: true }),
     para(run("Prepared with DealDesk. High level by design; figures may not sum due to rounding.", { size: 16, color: THEME.gray }), { before: 300 }),
   ];

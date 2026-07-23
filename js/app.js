@@ -272,10 +272,13 @@ function applyManualFinancials() {
     status.textContent = "Enter revenue for at least two years.";
     return;
   }
-  const series = { revenue };
-  if (cogs.every((v) => v !== null)) series.cogs = cogs;
-  if (opex.every((v) => v !== null)) series.opex = opex;
-  state.financials = { years, series, source: "manual" };
+  // Sort chronologically in case years were typed newest first
+  const order = years.map((_, i) => i).sort((a, b) => years[a] - years[b]);
+  const sortBy = (arr) => order.map((i) => arr[i]);
+  const series = { revenue: sortBy(revenue) };
+  if (cogs.every((v) => v !== null)) series.cogs = sortBy(cogs);
+  if (opex.every((v) => v !== null)) series.opex = sortBy(opex);
+  state.financials = { years: sortBy(years), series, source: "manual" };
   status.textContent = "Applied: " + revenue.length + " years of financials.";
   addFileChip("financials", "Manual entry (" + years[0] + " to " + years[years.length - 1] + ")", "applied");
 }

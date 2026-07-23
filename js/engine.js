@@ -82,6 +82,14 @@ function parseAoa(aoa) {
     years = Array.from({ length: n }, (_, i) => end - n + 1 + i);
   }
   years = years.slice(0, n);
+
+  // Many exports list the newest year first; growth math assumes
+  // chronological order, so sort years and every series together.
+  const order = years.map((_, i) => i).sort((a, b) => years[a] - years[b]);
+  years = order.map((i) => years[i]);
+  for (const key of Object.keys(series)) {
+    if (series[key].length === n) series[key] = order.map((i) => series[key][i]);
+  }
   return { years, series, source: "upload" };
 }
 
@@ -107,7 +115,9 @@ function computeMetrics(fin) {
   const n = rev.length;
   const last = n - 1;
 
-  const cagr = n > 1 ? Math.pow(rev[last] / rev[0], 1 / (n - 1)) - 1 : 0;
+  // Zero or negative revenue in the endpoint years would make growth
+  // and margin math blow up (Infinity, NaN); treat those as unknowable.
+  const cagr = n > 1 && rev[0] > 0 && rev[last] > 0 ? Math.pow(rev[last] / rev[0], 1 / (n - 1)) - 1 : 0;
 
   const grossProfit = series.cogs ? rev.map((r, i) => r - series.cogs[i]) : null;
   const ebitda = series.ebitda
@@ -115,10 +125,11 @@ function computeMetrics(fin) {
     : grossProfit && series.opex
     ? grossProfit.map((g, i) => g - series.opex[i])
     : null;
+  const lastRevPositive = rev[last] > 0;
 
   // Is the computed margin trend itself rising or falling?
   let marginDirection = null;
-  if (ebitda && n > 1) {
+  if (ebitda && n > 1 && rev[0] > 0 && lastRevPositive) {
     const mFirst = ebitda[0] / rev[0];
     const mLast = ebitda[last] / rev[last];
     marginDirection = mLast - mFirst > 0.01 ? "rising" : mFirst - mLast > 0.01 ? "falling" : "flat";
@@ -132,9 +143,9 @@ function computeMetrics(fin) {
     lastYear: years[last],
     revenueLatest: rev[last],
     revenueCAGR: cagr,
-    grossMargin: grossProfit ? grossProfit[last] / rev[last] : null,
+    grossMargin: grossProfit && lastRevPositive ? grossProfit[last] / rev[last] : null,
     ebitdaLatest: ebitda ? ebitda[last] : null,
-    ebitdaMargin: ebitda ? ebitda[last] / rev[last] : null,
+    ebitdaMargin: ebitda && lastRevPositive ? ebitda[last] / rev[last] : null,
     ebitdaSeries: ebitda,
     marginDirection,
     growthWord: growthWord(cagr),
@@ -152,7 +163,7 @@ function growthWord(cagr) {
 /* ---------- Formatting helpers ---------- */
 
 function fmtM(v) {
-  if (v === null || v === undefined) return "n/a";
+  if (v === null || v === undefined || !Number.isFinite(v)) return "n/a";
   const sign = v < 0 ? "-" : "";
   const a = Math.abs(v);
   if (a >= 10000) return sign + "$" + (a / 1000).toFixed(1) + "B";
@@ -160,7 +171,7 @@ function fmtM(v) {
 }
 
 function fmtPct(v) {
-  if (v === null || v === undefined) return "n/a";
+  if (v === null || v === undefined || !Number.isFinite(v)) return "n/a";
   return (v * 100).toFixed(1) + "%";
 }
 
@@ -813,7 +824,9 @@ function buildEmail(deal, m) {
         text: `The model shows annual ${term} value of ${fmtM(sc.conservative.total)} conservative to ${fmtM(sc.aggressive.total)} aggressive (${fmtM(sc.midpoint.total)} midpoint), on ${fmtM(m.revenueLatest)} of ${m.lastYear} revenue.${sc.inputs.flowDefaulted ? " Note: revenue uplift uses a defaulted 15% flow through margin because the company margin is unavailable or negative; treat that line as illustrative." : ""} Every percentage sits in a labeled input cell, so the assumptions can be flexed directly.`,
       },
       { lead: "Key sensitivity", text: sensitivity },
-      { lead: risk.lead, text: risk.text },
+      // Shortened here on purpose: the full risk paragraph lives in the
+      // summary, and an email should not repeat it word for word.
+      { lead: risk.lead, text: risk.text.split(";")[0] + "; the summary carries the full view." },
     ],
     nextSteps:
       verdict === "pause"
