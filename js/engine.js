@@ -543,9 +543,17 @@ function buildNarrative(deal, m) {
 
   const P = practiceOf(deal);
   const cf = contextForFrame(deal);
+  const fcFin = !P.frame && frameFromContext(deal);
   let dealFrame = P.frame
     ? P.frame(deal)
-    : frameFromContext(deal) ||
+    : (fcFin &&
+        fcFin +
+          {
+            "Acquisition": " This review supports the acquisition assessment.",
+            "Divestiture": " This review prepares the divestiture.",
+            "Carve out": " This review scopes the carve out and its entanglements.",
+            "Merger": " This review tests the merger case.",
+          }[deal.dealType]) ||
       {
         "Acquisition": `The client is evaluating the acquisition of ${deal.company}${cf.embed ? `, with a focus on ${cf.embed}` : " to expand its market position"}.`,
         "Divestiture": `The client is preparing ${deal.company} for divestiture and needs a clear view of separation complexity and standalone economics.`,
