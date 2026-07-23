@@ -276,6 +276,8 @@ async function generateSummaryDocx(deal, m) {
 
   const srcText = sample
     ? "Source: Illustrative sample financials; DealDesk analysis"
+    : m.source === "lookup"
+    ? "Source: Reported figures via Wikidata; DealDesk analysis"
     : "Source: Management information; DealDesk analysis";
 
   // Section order follows the PwC business summary template:
@@ -294,6 +296,7 @@ async function generateSummaryDocx(deal, m) {
     bodyPara(
       `${deal.company} operates in the ${(deal.industry || "target").toLowerCase()} sector with reported revenue of ${fmtM(m.revenueLatest)} in ${fyLabel(m.lastYear)}. ${P.overview(deal, m)}`
     ),
+    ...lookupProfileParas(deal),
     ...situationSnapshotParas(deal),
     summaryBox([
       para(run("What matters most", { serif: true, size: 24, bold: true, color: THEME.ink }), { after: 120 }),
@@ -312,8 +315,12 @@ async function generateSummaryDocx(deal, m) {
     bodyPara("[Headline 2: from sector press or analyst coverage]", { bullet: true }),
 
     h1("4. Key people"),
-    peopleTable(),
-    sourceLine("Source: Company website; investor relations"),
+    peopleTable(deal),
+    sourceLine(
+      deal.lookup && (deal.lookup.ceo || deal.lookup.chair)
+        ? "Source: Wikidata; confirm against company investor relations"
+        : "Source: Company website; investor relations"
+    ),
 
     h1("5. Key products"),
     productsTable(),
@@ -398,13 +405,32 @@ function analystNotesSection(deal) {
   ];
 }
 
-function peopleTable() {
+// Real company facts from the lookup, rendered as one overview line
+function lookupProfileParas(deal) {
+  const L = deal.lookup;
+  if (!L) return [];
+  const out = [];
+  if (L.description) out.push(bodyPara(L.description));
+  const facts = [];
+  if (L.founded) facts.push(`founded ${L.founded}`);
+  if (L.hq) facts.push(`headquartered in ${L.hq}`);
+  if (L.employees) facts.push(`about ${L.employees.toLocaleString("en-US")} employees`);
+  if (L.ceo) facts.push(`led by CEO ${L.ceo}`);
+  if (facts.length) {
+    const line = facts.join("; ");
+    out.push(bodyPara(line.charAt(0).toUpperCase() + line.slice(1) + ". Source: Wikidata."));
+  }
+  return out;
+}
+
+function peopleTable(deal) {
+  const L = deal.lookup || {};
   return placeholderTable(
     ["Role", "Name"],
     [
-      ["Chief Executive Officer", "[Name]"],
+      ["Chief Executive Officer", L.ceo || "[Name]"],
+      ["Chair of the Board", L.chair || "[Name]"],
       ["Chief Financial Officer", "[Name]"],
-      ["Chief Operating Officer", "[Name]"],
       ["[Other key role]", "[Name]"],
     ]
   );
@@ -651,6 +677,8 @@ async function generateSynergyPptx(deal, m) {
   const score = { High: 3, Medium: 2, Low: 1 };
   const srcLine = m.source === "sample"
     ? "Source: Illustrative sample financials; DealDesk analysis"
+    : m.source === "lookup"
+    ? "Source: Reported figures via Wikidata; DealDesk analysis"
     : "Source: Management financials; DealDesk analysis";
 
   const pptx = new PptxGenJS();

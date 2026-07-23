@@ -271,6 +271,13 @@ textarea { resize: vertical; }
   margin-top: 40px;
 }
 
+/* Company lookup */
+.lookup-row { display: flex; gap: 10px; }
+.lookup-row input { flex: 1; }
+.lookup-status { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
+.lookup-status.ok { color: var(--deep-green); }
+.lookup-status.err { color: var(--error); }
+
 /* Practice selector: stone cards, pale-green active */
 .practice-grid {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 6px;

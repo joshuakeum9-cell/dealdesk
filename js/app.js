@@ -6,7 +6,53 @@ const state = {
   metrics: null,
   deal: null,
   brandLogo: null, // {b64, mime, w, h}
+  lookup: null, // company profile from Wikipedia and Wikidata
 };
+
+/* ---------- Company lookup (Wikipedia + Wikidata, free, keyless) ---------- */
+
+async function runLookup() {
+  const name = document.getElementById("f-company").value.trim();
+  const status = document.getElementById("lookup-status");
+  if (!name) {
+    status.className = "lookup-status err";
+    status.textContent = "Enter a company name first.";
+    return;
+  }
+  status.className = "lookup-status";
+  status.textContent = "Looking up " + name + "...";
+  try {
+    const r = await lookupCompany(name);
+    if (!r) {
+      state.lookup = null;
+      status.className = "lookup-status err";
+      status.textContent = "No public profile found. Private companies: continue manually.";
+      return;
+    }
+    state.lookup = r;
+    const industryEl = document.getElementById("f-industry");
+    if (!industryEl.value.trim() && (r.industries[0] || r.shortDescription)) {
+      industryEl.value = r.industries[0] || r.shortDescription;
+    }
+    const found = [];
+    if (r.description) found.push("description");
+    if (r.ceo) found.push("CEO " + r.ceo);
+    if (r.employees) found.push(r.employees.toLocaleString("en-US") + " employees");
+    if (r.revenueSeries) {
+      found.push("revenue " + r.revenueSeries.years[0] + " to " + r.revenueSeries.years[r.revenueSeries.years.length - 1]);
+      if (!state.financials || state.financials.source === "sample") {
+        state.financials = { years: r.revenueSeries.years, series: { revenue: r.revenueSeries.revenue }, source: "lookup" };
+        addFileChip("financials", "Wikidata reported revenue (" + r.revenueSeries.years.join(", ") + ")", "applied");
+      }
+    }
+    status.className = "lookup-status ok";
+    status.textContent = "Found " + r.label + ": " + found.join("; ") + ". Documents will use this profile.";
+  } catch (e) {
+    state.lookup = null;
+    status.className = "lookup-status err";
+    status.textContent = "Lookup unavailable right now; continue manually.";
+  }
+}
 
 const FONT_PAIRS = {
   georgia: { serif: "Georgia", sans: "Arial" },
@@ -258,6 +304,7 @@ function getDeal() {
     dealType: document.getElementById("f-dealtype").value,
     revenueBand: document.getElementById("f-revenue").value,
     context: document.getElementById("f-context").value.trim(),
+    lookup: state.lookup || null,
     situation: {
       goal: sval("s-goal"),
       marginTrend: sval("s-margin"),
