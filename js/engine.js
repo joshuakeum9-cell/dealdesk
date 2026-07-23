@@ -533,19 +533,30 @@ function buildNarrative(deal, m) {
 /* ---------- Key findings ---------- */
 
 function buildKeyFindings(deal, m) {
-  const n = buildNarrative(deal, m);
+  // Compact one liners: the full sentences live in Section 2, so the
+  // findings box summarizes instead of repeating them verbatim.
   const risk = situationRisk(deal, m);
   const opps = buildOpportunities(deal, m);
   const top = opps.ranked[0];
   const term = practiceTerm(deal);
 
+  const first = m.series.revenue[0];
+  const topLine = `Revenue ${fmtM(first)} (${m.firstYear}) to ${fmtM(m.revenueLatest)} (${m.lastYear}), a ${fmtPct(m.revenueCAGR)} CAGR; detail in Section 2.`;
+
+  const marginQ =
+    m.ebitdaMargin === null
+      ? "Profitability not derivable from the provided statements; request a full income statement."
+      : m.ebitdaMargin < 0
+      ? `Loss making: EBITDA of ${fmtM(m.ebitdaLatest)} (${fmtPct(m.ebitdaMargin)} margin) in ${m.lastYear}; stabilization precedes value creation.`
+      : `EBITDA ${fmtM(m.ebitdaLatest)} at a ${fmtPct(m.ebitdaMargin)} margin in ${m.lastYear}, ${m.ebitdaMargin > 0.2 ? "strong for the sector" : m.ebitdaMargin > 0.1 ? "within a typical range" : "thin"}; detail in Section 2.`;
+
   return [
-    { lead: "Top line", text: n.growthSentence + " See Section 2." },
-    { lead: "Profitability", text: n.marginSentence + " See Section 2." },
+    { lead: "Top line", text: topLine },
+    { lead: "Profitability", text: marginQ },
     { lead: risk.lead, text: risk.text },
     {
       lead: `${term.charAt(0).toUpperCase() + term.slice(1)} anchor`,
-      text: `${top.name} scores highest for this situation on impact and achievability; see the accompanying presentation for the ranked view.`,
+      text: `${top.name} scores highest for this situation on impact and achievability; ranked view in the accompanying presentation.`,
     },
   ];
 }

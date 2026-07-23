@@ -434,6 +434,12 @@ function financialsTable(m) {
 
   const header = [unit, ...m.years.map((y) => fyLabel(y)), fyLabel(m.lastYear + 1, "F")];
   const rows = [["Revenue", ...m.series.revenue.map(fN), fN(proj(m.series.revenue))]];
+  rows.push([
+    "Revenue growth (%)",
+    "n/a",
+    ...m.series.revenue.slice(1).map((v, i) => fmtPct(v / m.series.revenue[i] - 1)),
+    fmtPct(g),
+  ]);
   if (m.series.cogs) rows.push(["COGS", ...m.series.cogs.map((v) => fN(-v)), fN(-proj(m.series.cogs))]);
   if (m.series.opex) rows.push(["SG&A / Opex", ...m.series.opex.map((v) => fN(-v)), fN(-proj(m.series.opex))]);
   const totalRow = m.ebitdaSeries
@@ -542,6 +548,56 @@ async function generateGuideDocx(deal, m) {
 const SLIDE_W = 13.33;
 const MARGIN = 0.45;
 
+// Revenue columns plus a separate EBITDA margin line on the summary
+// slide. Two charts, one measure each: never a dual axis. Single
+// series per chart, so no legends; values labeled directly, no
+// gridlines, hidden value axes.
+function addSummaryCharts(slide, m) {
+  const CX = 6.85, CW = SLIDE_W - MARGIN - 6.85;
+  const big = m.revenueLatest >= 10000;
+  const div = big ? 1000 : 1;
+  const labels = m.years.map((y) => fyLabel(y));
+  const axisOpts = {
+    valAxisHidden: true,
+    valGridLine: { style: "none" },
+    catAxisLineShow: false,
+    catAxisLabelFontFace: THEME.sans,
+    catAxisLabelFontSize: 10,
+    catAxisLabelColor: THEME.gray,
+    showLegend: false,
+    showTitle: false,
+    dataLabelFontFace: THEME.sans,
+    dataLabelFontSize: 9,
+    dataLabelColor: "404850",
+  };
+
+  slide.addText(`REVENUE, ${big ? "$B" : "$M"}`, {
+    x: CX, y: 1.42, w: CW, h: 0.26,
+    fontFace: THEME.sans, fontSize: 10, bold: true, color: THEME.gray, charSpacing: 1,
+  });
+  slide.addChart("bar", [{ name: "Revenue", labels, values: m.series.revenue.map((v) => +(v / div).toFixed(1)) }], {
+    x: CX, y: 1.7, w: CW, h: m.ebitdaSeries ? 2.15 : 4.4,
+    barDir: "col", barGapWidthPct: 40,
+    chartColors: [THEME.accent],
+    showValue: true, dataLabelPosition: "outEnd",
+    ...axisOpts,
+  });
+
+  if (m.ebitdaSeries) {
+    slide.addText("EBITDA MARGIN, %", {
+      x: CX, y: 4.02, w: CW, h: 0.26,
+      fontFace: THEME.sans, fontSize: 10, bold: true, color: THEME.gray, charSpacing: 1,
+    });
+    slide.addChart("line", [{ name: "EBITDA margin", labels, values: m.ebitdaSeries.map((e, i) => +((e / m.series.revenue[i]) * 100).toFixed(1)) }], {
+      x: CX, y: 4.3, w: CW, h: 1.95,
+      chartColors: [THEME.accent2],
+      lineSize: 2, lineSmooth: false, lineDataSymbol: "circle", lineDataSymbolSize: 6,
+      showValue: true, dataLabelPosition: "t",
+      ...axisOpts,
+    });
+  }
+}
+
 function addFurniture(slide, { kicker, title, source, takeaway }) {
   if (kicker) {
     slide.addText(kicker.toUpperCase(), {
@@ -627,28 +683,28 @@ async function generateSynergyPptx(deal, m) {
     source: srcLine,
     takeaway: "The next two slides expand each category in the order shown here",
   });
+  // Left column: framing plus the two category signposts
   s.addText(n.dealFrame, {
-    x: MARGIN, y: 1.5, w: SLIDE_W - 2 * MARGIN, h: 0.62,
-    fontFace: THEME.sans, fontSize: 12.5, color: "404850", valign: "top",
+    x: MARGIN, y: 1.42, w: 6.15, h: 0.95,
+    fontFace: THEME.sans, fontSize: 12, color: "404850", valign: "top",
     fit: "shrink",
   });
   groups.forEach((g, gi) => {
-    const x = MARGIN + gi * 6.3;
-    s.addText(`${gi + 1}. ${g.label.toUpperCase()}`, {
-      x, y: 2.25, w: 6.1, h: 0.35,
-      fontFace: THEME.sans, fontSize: 12, bold: true, color: THEME.accent, charSpacing: 1,
+    const y = 2.5 + gi * 1.9;
+    s.addText(`${gi + 1}. ${g.label.toUpperCase()} (SLIDE ${gi + 2})`, {
+      x: MARGIN, y, w: 6.15, h: 0.3,
+      fontFace: THEME.sans, fontSize: 11, bold: true, color: THEME.accent, charSpacing: 1,
     });
     s.addText(
       g.items.map((it) => ({
         text: `${all.findIndex((a) => a.name === it.name) + 1}. ${it.name}`,
         options: { breakLine: true, color: THEME.ink, bold: false },
       })),
-      { x, y: 2.65, w: 6.1, h: 2.4, fontFace: THEME.sans, fontSize: 13, lineSpacing: 26, valign: "top", fit: "shrink" }
+      { x: MARGIN, y: y + 0.32, w: 6.15, h: 1.45, fontFace: THEME.sans, fontSize: 12, lineSpacing: 21, valign: "top", fit: "shrink" }
     );
-    s.addText(`Expanded on slide ${gi + 2}`, {
-      x, y: 5.35, w: 6.1, h: 0.3, fontFace: THEME.sans, fontSize: 10, italic: true, color: THEME.gray,
-    });
   });
+  // Right column: the financial context as charts (one measure per chart)
+  addSummaryCharts(s, m);
 
   /* --- Slides 2 and 3: expand each category, same order as slide 1 --- */
   groups.forEach((g, gi) => {
@@ -799,6 +855,7 @@ function generateModelXlsx(deal, m) {
     [`Revenue ${term} (at flow through margin)`, null, null, null],
     ...inp.lines.map((l) => [`${l.label} ${term}`, null, null, null]),
     [`Total ${term} value`, null, null, null],
+    ["Total as % of target revenue", null, null, null],
     [null, null, null, null],
     ["All cells on this sheet are formulas driven by the Inputs sheet.", null, null, null],
   ];
@@ -822,23 +879,59 @@ function generateModelXlsx(deal, m) {
       f: `SUM(${c}3:${c}${totalRow - 1})`,
       z: NUMFMT,
     };
+    wsM[c + (totalRow + 1)] = {
+      t: "n",
+      v: scen[si].total / inp.revenue,
+      f: `${c}${totalRow}/${I(refs.revenue)}`,
+      z: PCT,
+    };
   });
   wsM["!cols"] = [{ wch: 42 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
   wsM["!ref"] = `A1:D${aoaM.length}`;
   XLSX.utils.book_append_sheet(wb, wsM, `${Term} Model`);
 
-  // Historicals sheet
+  // Historicals sheet with live growth and margin formula rows
   const hist = [
     ["Historical financials ($M)", ...m.years.map((y) => fyLabel(y))],
     ["Revenue", ...m.series.revenue],
   ];
+  const revRow = 2;
   if (m.series.cogs) hist.push(["COGS", ...m.series.cogs]);
   if (m.series.opex) hist.push(["Opex", ...m.series.opex]);
-  if (m.ebitdaSeries) hist.push(["EBITDA", ...m.ebitdaSeries]);
+  let ebRow = null;
+  if (m.ebitdaSeries) {
+    hist.push(["EBITDA", ...m.ebitdaSeries]);
+    ebRow = hist.length;
+  }
+  hist.push(["Revenue growth (%)", ...m.years.map(() => null)]);
+  const growthRow = hist.length;
+  if (ebRow) hist.push(["EBITDA margin (%)", ...m.years.map(() => null)]);
+  const marginRow = ebRow ? hist.length : null;
+
   const wsH = XLSX.utils.aoa_to_sheet(hist);
   Object.keys(wsH).forEach((k) => {
     if (!k.startsWith("!") && wsH[k].t === "n") wsH[k].z = NUMFMT;
   });
+  const yCols = ["B", "C", "D", "E", "F", "G", "H"].slice(0, m.years.length);
+  yCols.forEach((c, i) => {
+    if (i > 0) {
+      wsH[c + growthRow] = {
+        t: "n",
+        v: m.series.revenue[i] / m.series.revenue[i - 1] - 1,
+        f: `(${c}${revRow}-${yCols[i - 1]}${revRow})/${yCols[i - 1]}${revRow}`,
+        z: PCT,
+      };
+    }
+    if (marginRow) {
+      wsH[c + marginRow] = {
+        t: "n",
+        v: m.ebitdaSeries[i] / m.series.revenue[i],
+        f: `${c}${ebRow}/${c}${revRow}`,
+        z: PCT,
+      };
+    }
+  });
+  wsH["!ref"] = `A1:${yCols[yCols.length - 1]}${hist.length}`;
   wsH["!cols"] = [{ wch: 24 }, ...m.years.map(() => ({ wch: 11 }))];
   XLSX.utils.book_append_sheet(wb, wsH, "Historicals");
 
