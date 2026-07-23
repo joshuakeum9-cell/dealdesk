@@ -176,6 +176,21 @@ function focusPhrase(context) {
   return s;
 }
 
+// If the pasted context already reads as a complete framing sentence
+// ("The client is evaluating...", or it names the company), use it AS
+// the frame instead of embedding it into a template, which would
+// double the subject: "...acquisition of X to The client is...".
+function frameFromContext(deal) {
+  const fp = focusPhrase(deal.context);
+  if (!fp) return null;
+  const firstWord = (deal.company || "").split(/\s+/)[0].toLowerCase();
+  const readsAsFrame =
+    /^(the client|our client|the parent|the company|management|we )/i.test(fp) ||
+    (firstWord.length > 2 && fp.toLowerCase().includes(firstWord));
+  if (!readsAsFrame) return null;
+  return /[.!?]$/.test(fp) ? fp : fp + ".";
+}
+
 /* ---------- Situation assessment ----------
    Structured answers from the engagement form. Every value defaults
    to "" (not answered), and the engine treats unanswered as neutral. */
@@ -211,6 +226,8 @@ const PRACTICES = {
     deckTitle: "Strategic options assessment",
     deckShort: "Strategic Options Presentation",
     frame: (deal) => {
+      const fc = frameFromContext(deal);
+      if (fc) return fc + " This strategic review covers competitive position, growth options, and portfolio choices.";
       const fp = focusPhrase(deal.context);
       return `The client has commissioned a strategic review of ${deal.company} covering competitive position, growth options, and portfolio choices${fp ? `, with a focus on ${fp.replace(/\.$/, "")}` : ""}.`;
     },
@@ -283,6 +300,8 @@ const PRACTICES = {
     deckTitle: "Operational improvement assessment",
     deckShort: "Operational Improvement Presentation",
     frame: (deal) => {
+      const fc = frameFromContext(deal);
+      if (fc) return fc + " This operational review targets efficiency, cost, and throughput improvements.";
       const fp = focusPhrase(deal.context);
       return `The client has engaged an operational review of ${deal.company} to identify efficiency, cost, and throughput improvements${fp ? `, with a focus on ${fp.replace(/\.$/, "")}` : ""}.`;
     },
@@ -356,7 +375,7 @@ const PRACTICES = {
     deckShort: "Qualitative Synergy Presentation",
     frame: null, // deal type specific, built in buildNarrative
     overview: (deal, m) =>
-      `${deal.company} operates in the ${(deal.industry || "target").toLowerCase()} sector; the analysis focuses on quality of earnings, deal perimeter, and value creation levers.`,
+      "The analysis focuses on quality of earnings, deal perimeter, and value creation levers.",
     defaultRisk: null, // deal type specific
     emailRisk: null, // deal type specific
     baseSections: null, // deal type specific, built in buildInterviewQuestions
@@ -499,13 +518,14 @@ function buildNarrative(deal, m) {
   const fp = focusPhrase(deal.context);
   let dealFrame = P.frame
     ? P.frame(deal)
-    : {
-        "Acquisition": `The client is evaluating the acquisition of ${deal.company} to ${fp || "expand its market position"}.`,
+    : frameFromContext(deal) ||
+      {
+        "Acquisition": `The client is evaluating the acquisition of ${deal.company}${fp ? `, with a focus on ${fp.replace(/\.$/, "")}` : " to expand its market position"}.`,
         "Divestiture": `The client is preparing ${deal.company} for divestiture and needs a clear view of separation complexity and standalone economics.`,
         "Carve out": `${deal.company} is being carved out of its parent, so entanglements and transition services drive both risk and value.`,
         "Merger": `The contemplated merger with ${deal.company} turns on integration feasibility and the credibility of the combined entity synergy case.`,
       }[deal.dealType];
-  if (s.goal) dealFrame += ` The stated priority is ${s.goal.toLowerCase()}.`;
+  if (s.goal) dealFrame += ` Stated priority: ${s.goal.toLowerCase()}.`;
 
   return { growthSentence, marginSentence, dealFrame };
 }
@@ -679,10 +699,13 @@ function buildOpportunities(deal, m) {
 
 /* ---------- Verdict: the recommendation follows the numbers ---------- */
 
-// proceed | caution | pause
+// proceed | caution | pause. High COGS businesses (retail, distribution)
+// are structurally thin margin, so their caution floor sits lower.
 function verdictOf(m) {
   if (m.revenueCAGR < -0.05 || (m.ebitdaMargin !== null && m.ebitdaMargin < 0)) return "pause";
-  if (m.revenueCAGR < 0 || (m.ebitdaMargin !== null && m.ebitdaMargin < 0.05)) return "caution";
+  const cogsShare = m.series.cogs ? m.series.cogs[m.series.cogs.length - 1] / m.revenueLatest : null;
+  const marginFloor = cogsShare !== null && cogsShare > 0.75 ? 0.015 : 0.05;
+  if (m.revenueCAGR < 0 || (m.ebitdaMargin !== null && m.ebitdaMargin < marginFloor)) return "caution";
   return "proceed";
 }
 

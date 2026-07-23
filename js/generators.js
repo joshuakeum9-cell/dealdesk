@@ -563,10 +563,12 @@ function addFurniture(slide, { kicker, title, source, takeaway }) {
       fontFace: THEME.sans, fontSize: 9, color: THEME.grayLight,
     });
   }
-  // Action title: full-sentence takeaway, fixed position, largest text on slide
+  // Action title: full-sentence takeaway, fixed position, largest text
+  // on the slide. fit shrink keeps long titles inside the box.
   slide.addText(title, {
-    x: MARGIN, y: 0.5, w: SLIDE_W - 2 * MARGIN, h: 0.85,
+    x: MARGIN, y: 0.5, w: SLIDE_W - 2 * MARGIN, h: 0.9,
     fontFace: THEME.serif, fontSize: 19, color: THEME.ink, bold: false, valign: "top",
+    fit: "shrink",
   });
   if (takeaway) {
     slide.addShape("rect", { x: MARGIN, y: 6.42, w: SLIDE_W - 2 * MARGIN, h: 0.52, fill: { color: THEME.fill }, line: { type: "none" } });
@@ -574,6 +576,7 @@ function addFurniture(slide, { kicker, title, source, takeaway }) {
     slide.addText(takeaway, {
       x: MARGIN + 0.18, y: 6.42, w: SLIDE_W - 2 * MARGIN - 0.3, h: 0.52,
       fontFace: THEME.sans, fontSize: 12.5, bold: true, color: THEME.ink, valign: "middle",
+      fit: "shrink",
     });
   }
   if (source) {
@@ -625,8 +628,9 @@ async function generateSynergyPptx(deal, m) {
     takeaway: "The next two slides expand each category in the order shown here",
   });
   s.addText(n.dealFrame, {
-    x: MARGIN, y: 1.45, w: SLIDE_W - 2 * MARGIN, h: 0.65,
+    x: MARGIN, y: 1.5, w: SLIDE_W - 2 * MARGIN, h: 0.62,
     fontFace: THEME.sans, fontSize: 12.5, color: "404850", valign: "top",
+    fit: "shrink",
   });
   groups.forEach((g, gi) => {
     const x = MARGIN + gi * 6.3;
@@ -639,7 +643,7 @@ async function generateSynergyPptx(deal, m) {
         text: `${all.findIndex((a) => a.name === it.name) + 1}. ${it.name}`,
         options: { breakLine: true, color: THEME.ink, bold: false },
       })),
-      { x, y: 2.65, w: 6.1, h: 2.4, fontFace: THEME.sans, fontSize: 13, lineSpacing: 26, valign: "top" }
+      { x, y: 2.65, w: 6.1, h: 2.4, fontFace: THEME.sans, fontSize: 13, lineSpacing: 26, valign: "top", fit: "shrink" }
     );
     s.addText(`Expanded on slide ${gi + 2}`, {
       x, y: 5.35, w: 6.1, h: 0.3, fontFace: THEME.sans, fontSize: 10, italic: true, color: THEME.gray,
@@ -668,11 +672,12 @@ async function generateSynergyPptx(deal, m) {
           { text: it.name, options: { bold: true, color: THEME.ink, fontSize: 15 } },
           { text: `   Impact: ${it.impact}  |  Ease: ${it.ease}`, options: { color: THEME.gray, fontSize: 10.5 } },
         ],
-        { x: 1.05, y, w: 11.7, h: 0.42, fontFace: THEME.sans, valign: "middle" }
+        { x: 1.05, y, w: 11.7, h: 0.42, fontFace: THEME.sans, valign: "middle", fit: "shrink" }
       );
       sl.addText(it.rationale, {
         x: 1.05, y: y + 0.44, w: 11.7, h: 0.95,
         fontFace: THEME.sans, fontSize: 12.5, color: "404850", valign: "top", lineSpacing: 18,
+        fit: "shrink",
       });
     });
   });
@@ -714,7 +719,7 @@ async function generateSynergyPptx(deal, m) {
       text: `${i + 1}. ${it.name}`,
       options: { breakLine: true, color: "404850" },
     })),
-    { x: 8.55, y: 1.9, w: 4.3, h: 4.2, fontFace: THEME.sans, fontSize: 11, lineSpacing: 20, valign: "top" }
+    { x: 8.55, y: 1.9, w: 4.3, h: 4.2, fontFace: THEME.sans, fontSize: 11, lineSpacing: 20, valign: "top", fit: "shrink" }
   );
   s.addText([
     { text: "● ", options: { color: THEME.accent2 } }, { text: groups[0].label + "   ", options: { color: THEME.gray } },
