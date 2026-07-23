@@ -111,7 +111,10 @@ function initPickers() {
     });
   });
 
-  // Client logo: read as base64, capture natural dimensions for aspect ratio
+  // Client logo: read as base64, capture natural dimensions, and pull
+  // the brand colors straight out of the pixels. No AI: a canvas
+  // histogram picks a dark dominant color for primary and the most
+  // saturated distinct color for accent.
   const logoInput = document.getElementById("picker-logo");
   logoInput.addEventListener("change", () => {
     const file = logoInput.files[0];
@@ -123,11 +126,20 @@ function initPickers() {
         const [, mime, b64] = reader.result.match(/^data:(image\/\w+);base64,(.+)$/) || [];
         if (!b64) return;
         state.brandLogo = { b64, mime, w: img.naturalWidth, h: img.naturalHeight };
+        const palette = extractLogoPalette(img);
+        let note = "";
+        if (palette) {
+          document.getElementById("f-brand-primary").value = palette.primary;
+          document.getElementById("f-brand-accent").value = palette.accent;
+          const branded = document.querySelector('input[name="output-mode"][value="branded"]');
+          if (branded) branded.checked = true;
+          note = " (brand colors applied from logo)";
+        }
         const list = document.getElementById("files-logo");
         list.innerHTML = "";
         const chip = document.createElement("div");
         chip.className = "file-chip";
-        chip.textContent = "✓ " + file.name;
+        chip.textContent = "✓ " + file.name + note;
         list.appendChild(chip);
       };
       img.src = reader.result;
@@ -135,6 +147,56 @@ function initPickers() {
     reader.readAsDataURL(file);
     logoInput.value = "";
   });
+}
+
+/* ---------- Logo palette extraction (pure pixel math) ---------- */
+
+function extractLogoPalette(img) {
+  try {
+    const size = 48;
+    const cv = document.createElement("canvas");
+    cv.width = size;
+    cv.height = size;
+    const ctx = cv.getContext("2d");
+    ctx.drawImage(img, 0, 0, size, size);
+    const data = ctx.getImageData(0, 0, size, size).data;
+
+    const buckets = new Map();
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] < 200) continue; // transparent
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      if (r > 242 && g > 242 && b > 242) continue; // white background
+      const key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
+      const e = buckets.get(key) || { n: 0, r: 0, g: 0, b: 0 };
+      e.n++; e.r += r; e.g += g; e.b += b;
+      buckets.set(key, e);
+    }
+    const cols = [...buckets.values()]
+      .map((e) => {
+        const r = e.r / e.n, g = e.g / e.n, b = e.b / e.n;
+        const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+        return { r, g, b, n: e.n, sat: mx === 0 ? 0 : (mx - mn) / mx, lum: 0.2126 * r + 0.7152 * g + 0.0722 * b };
+      })
+      .filter((c) => c.n >= 4);
+    if (!cols.length) return null;
+
+    // Primary: common and dark wins (it plays the ink role in documents)
+    let primary = cols.slice().sort((a, b) => b.n * (1 - (b.lum / 255) * 0.7) - a.n * (1 - (a.lum / 255) * 0.7))[0];
+    // Documents need a primary dark enough to carry text and fills
+    let { r, g, b } = primary;
+    while (0.2126 * r + 0.7152 * g + 0.0722 * b > 150) { r *= 0.85; g *= 0.85; b *= 0.85; }
+    const hex = (R, G, B) => "#" + [R, G, B].map((v) => Math.round(v).toString(16).padStart(2, "0")).join("");
+    const primaryHex = hex(r, g, b);
+
+    // Accent: most saturated color clearly different from the primary
+    const dist = (a, c) => Math.hypot(a.r - c.r, a.g - c.g, a.b - c.b);
+    const accent = cols
+      .filter((c) => dist(c, primary) > 60 && c.sat > 0.25 && c.lum < 235)
+      .sort((a, c) => c.sat * c.n - a.sat * a.n)[0];
+    return { primary: primaryHex, accent: accent ? hex(accent.r, accent.g, accent.b) : primaryHex };
+  } catch (e) {
+    return null;
+  }
 }
 
 /* ---------- Manual financials entry ---------- */

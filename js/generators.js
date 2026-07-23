@@ -62,6 +62,7 @@ function setTheme(brand) {
     ...DEFAULT_THEME,
     ink,
     accent,
+    accent2: tint(accent, 0.4), // second series stays in the brand family
     serif: brand.serif || DEFAULT_THEME.serif,
     sans: brand.sans || DEFAULT_THEME.sans,
     logo: brand.logo || null,

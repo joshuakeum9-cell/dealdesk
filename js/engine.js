@@ -153,13 +153,22 @@ function growthWord(cagr) {
 
 function fmtM(v) {
   if (v === null || v === undefined) return "n/a";
-  if (Math.abs(v) >= 10000) return "$" + (v / 1000).toFixed(1) + "B";
-  return "$" + v.toFixed(1) + "M";
+  const sign = v < 0 ? "-" : "";
+  const a = Math.abs(v);
+  if (a >= 10000) return sign + "$" + (a / 1000).toFixed(1) + "B";
+  return sign + "$" + a.toFixed(1) + "M";
 }
 
 function fmtPct(v) {
   if (v === null || v === undefined) return "n/a";
   return (v * 100).toFixed(1) + "%";
+}
+
+// "an 8.8% margin" but "a 9.9% CAGR": the article depends on how the
+// number is spoken (eight, eleven, eighteen take "an").
+function art(numStr) {
+  const s = String(numStr).replace(/^-/, "");
+  return /^8/.test(s) || /^11(\D|$)/.test(s) || /^18(\D|$)/.test(s) ? "an" : "a";
 }
 
 /* ---------- Context guard ----------
@@ -174,6 +183,22 @@ function focusPhrase(context) {
   if (stop > 10) s = s.slice(0, stop);
   if (s.length > 140) s = s.slice(0, 140).replace(/\s\S*$/, "");
   return s;
+}
+
+// How should the context appear in the frame? Either embedded as a
+// phrase ("with a focus on entry into the contractor channel") or, if
+// it is a full clause with its own verb, as a separate Background
+// sentence. Leading gerunds are stripped and the first letter is
+// lowercased for embedding.
+function contextForFrame(deal) {
+  if (frameFromContext(deal)) return { embed: null, background: null };
+  let fp = focusPhrase(deal.context);
+  if (!fp) return { embed: null, background: null };
+  fp = fp.replace(/^(considering|exploring|evaluating|assessing|looking at|thinking about)\s+/i, "");
+  const isClause = /\b(is|are|was|were|has|have|had|grew|grow|wants?|needs?|must|will|can|cannot|lost|losing|fell|fall|rose|took|keeps?|ran|runs?)\b/i.test(fp);
+  if (isClause) return { embed: null, background: fp.replace(/[.!?]$/, "") + "." };
+  const lowered = /^[A-Z][a-z]/.test(fp) ? fp[0].toLowerCase() + fp.slice(1) : fp;
+  return { embed: lowered.replace(/\.$/, ""), background: null };
 }
 
 // If the pasted context already reads as a complete framing sentence
@@ -228,8 +253,8 @@ const PRACTICES = {
     frame: (deal) => {
       const fc = frameFromContext(deal);
       if (fc) return fc + " This strategic review covers competitive position, growth options, and portfolio choices.";
-      const fp = focusPhrase(deal.context);
-      return `The client has commissioned a strategic review of ${deal.company} covering competitive position, growth options, and portfolio choices${fp ? `, with a focus on ${fp.replace(/\.$/, "")}` : ""}.`;
+      const cf = contextForFrame(deal);
+      return `The client has commissioned a strategic review of ${deal.company} covering competitive position, growth options, and portfolio choices${cf.embed ? `, with a focus on ${cf.embed}` : ""}.${cf.background ? ` Background: ${cf.background}` : ""}`;
     },
     overview: (deal, m) =>
       `Market attractiveness, share position, and the durability of ${deal.company}'s competitive advantages frame every recommendation in this review.`,
@@ -302,8 +327,8 @@ const PRACTICES = {
     frame: (deal) => {
       const fc = frameFromContext(deal);
       if (fc) return fc + " This operational review targets efficiency, cost, and throughput improvements.";
-      const fp = focusPhrase(deal.context);
-      return `The client has engaged an operational review of ${deal.company} to identify efficiency, cost, and throughput improvements${fp ? `, with a focus on ${fp.replace(/\.$/, "")}` : ""}.`;
+      const cf = contextForFrame(deal);
+      return `The client has engaged an operational review of ${deal.company} to identify efficiency, cost, and throughput improvements${cf.embed ? `, with a focus on ${cf.embed}` : ""}.${cf.background ? ` Background: ${cf.background}` : ""}`;
     },
     overview: (deal, m) =>
       `The operating model, cost structure, and supply chain of ${deal.company} are the units of analysis; financial results are treated as symptoms of operational drivers.`,
@@ -506,6 +531,8 @@ function buildNarrative(deal, m) {
       ? `EBITDA margin of ${fmtPct(m.ebitdaMargin)} is strong for the sector and suggests durable pricing power or cost discipline.`
       : m.ebitdaMargin > 0.1
       ? `EBITDA margin of ${fmtPct(m.ebitdaMargin)} is within a typical range, with room for operational improvement after close.`
+      : m.series.cogs && m.series.cogs[m.series.cogs.length - 1] / m.revenueLatest > 0.75
+      ? `EBITDA margin of ${fmtPct(m.ebitdaMargin)} is thin in absolute terms, typical of a high volume, low margin model; unit economics matter more than the headline margin here.`
       : `EBITDA margin of ${fmtPct(m.ebitdaMargin)} is thin, making cost structure a priority diligence area.`
     : "Profitability could not be derived from the provided statements; request a full income statement.";
   if (s.marginTrend === "Declining" && m.marginDirection === "rising") {
@@ -515,16 +542,16 @@ function buildNarrative(deal, m) {
   }
 
   const P = practiceOf(deal);
-  const fp = focusPhrase(deal.context);
+  const cf = contextForFrame(deal);
   let dealFrame = P.frame
     ? P.frame(deal)
     : frameFromContext(deal) ||
       {
-        "Acquisition": `The client is evaluating the acquisition of ${deal.company}${fp ? `, with a focus on ${fp.replace(/\.$/, "")}` : " to expand its market position"}.`,
+        "Acquisition": `The client is evaluating the acquisition of ${deal.company}${cf.embed ? `, with a focus on ${cf.embed}` : " to expand its market position"}.`,
         "Divestiture": `The client is preparing ${deal.company} for divestiture and needs a clear view of separation complexity and standalone economics.`,
         "Carve out": `${deal.company} is being carved out of its parent, so entanglements and transition services drive both risk and value.`,
         "Merger": `The contemplated merger with ${deal.company} turns on integration feasibility and the credibility of the combined entity synergy case.`,
-      }[deal.dealType];
+      }[deal.dealType] + (cf.background ? ` Background: ${cf.background}` : "");
   if (s.goal) dealFrame += ` Stated priority: ${s.goal.toLowerCase()}.`;
 
   return { growthSentence, marginSentence, dealFrame };
@@ -541,14 +568,21 @@ function buildKeyFindings(deal, m) {
   const term = practiceTerm(deal);
 
   const first = m.series.revenue[0];
-  const topLine = `Revenue ${fmtM(first)} (${m.firstYear}) to ${fmtM(m.revenueLatest)} (${m.lastYear}), a ${fmtPct(m.revenueCAGR)} CAGR; detail in Section 2.`;
+  const pc = fmtPct(m.revenueCAGR);
+  const topLine = `Revenue ${fmtM(first)} (${m.firstYear}) to ${fmtM(m.revenueLatest)} (${m.lastYear}), ${art(pc)} ${pc} CAGR; detail in Section 2.`;
 
+  const cogsShare = m.series.cogs ? m.series.cogs[m.series.cogs.length - 1] / m.revenueLatest : null;
+  const thinWord =
+    cogsShare !== null && cogsShare > 0.75
+      ? "thin in absolute terms, typical of a high volume, low margin model"
+      : "thin";
+  const pm = m.ebitdaMargin === null ? "" : fmtPct(m.ebitdaMargin);
   const marginQ =
     m.ebitdaMargin === null
       ? "Profitability not derivable from the provided statements; request a full income statement."
       : m.ebitdaMargin < 0
-      ? `Loss making: EBITDA of ${fmtM(m.ebitdaLatest)} (${fmtPct(m.ebitdaMargin)} margin) in ${m.lastYear}; stabilization precedes value creation.`
-      : `EBITDA ${fmtM(m.ebitdaLatest)} at a ${fmtPct(m.ebitdaMargin)} margin in ${m.lastYear}, ${m.ebitdaMargin > 0.2 ? "strong for the sector" : m.ebitdaMargin > 0.1 ? "within a typical range" : "thin"}; detail in Section 2.`;
+      ? `Loss making: EBITDA of ${fmtM(m.ebitdaLatest)} (${pm} margin) in ${m.lastYear}; stabilization precedes value creation.`
+      : `EBITDA ${fmtM(m.ebitdaLatest)} at ${art(pm)} ${pm} margin in ${m.lastYear}, ${m.ebitdaMargin > 0.2 ? "strong for the sector" : m.ebitdaMargin > 0.1 ? "within a typical range" : thinWord}; detail in Section 2.`;
 
   return [
     { lead: "Top line", text: topLine },
@@ -556,7 +590,7 @@ function buildKeyFindings(deal, m) {
     { lead: risk.lead, text: risk.text },
     {
       lead: `${term.charAt(0).toUpperCase() + term.slice(1)} anchor`,
-      text: `${top.name} scores highest for this situation on impact and achievability; ranked view in the accompanying presentation.`,
+      text: `"${top.name}" scores highest for this situation on impact and achievability; ranked view in the accompanying presentation.`,
     },
   ];
 }
@@ -743,7 +777,7 @@ function buildEmail(deal, m) {
     pause: `${deal.company}: recommend a focused diagnostic before advancing; ${fmtM(m.revenueLatest)} revenue, ${marginText}`,
   };
   const answers = {
-    proceed: `Recommendation: advance ${deal.company} to the management interview phase, leading with ${top.name.toLowerCase()}. The financial profile supports the ${thesis} thesis, subject to the diligence items below.`,
+    proceed: `Recommendation: advance ${deal.company} to the management interview phase; the lead hypothesis is "${top.name}". The financial profile supports the ${thesis} thesis, subject to the diligence items below.`,
     caution: `Recommendation: proceed to management interviews with caution. Growth or profitability is below par, so the agenda below is built to test whether the ${thesis} thesis still holds before further commitment.`,
     pause: `Recommendation: pause before advancing. The provided statements show ${m.revenueCAGR < -0.05 ? "declining revenue" : "losses at the EBITDA line"}, which the ${thesis} thesis cannot yet support; commission a focused margin and cash diagnostic first, then revisit.`,
   };
@@ -773,11 +807,18 @@ function buildEmail(deal, m) {
       { lead: "Key sensitivity", text: sensitivity },
       { lead: risk.lead, text: risk.text },
     ],
-    nextSteps: [
-      "Conduct management interviews using the attached guide (weeks 1 to 2).",
-      `Size the top three ${term} opportunities bottom up (weeks 2 to 3).`,
-      "Fold validated findings into the model and reconvene (week 4).",
-    ],
+    nextSteps:
+      verdict === "pause"
+        ? [
+            "Scope a two week margin and cash diagnostic with finance (week 1).",
+            "Rebase the financial baseline on the diagnostic findings (weeks 2 to 3).",
+            "Revisit the go decision with the attached interview guide held ready (week 4).",
+          ]
+        : [
+            "Conduct management interviews using the attached guide (weeks 1 to 2).",
+            `Size the top three ${term} opportunities bottom up (weeks 2 to 3).`,
+            "Fold validated findings into the model and reconvene (week 4).",
+          ],
     close: "Full analysis in the attached model, summary, and interview guide. Happy to walk through the assumptions.",
   };
 }
