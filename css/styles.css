@@ -326,7 +326,7 @@ textarea { resize: vertical; }
   padding: 20px; margin-bottom: 20px; background: var(--canvas);
 }
 .manual-grid {
-  display: grid; grid-template-columns: 120px repeat(4, 1fr); gap: 8px;
+  display: grid; grid-template-columns: 175px repeat(4, 1fr); gap: 8px;
   align-items: center; margin-bottom: 14px;
 }
 .manual-head {

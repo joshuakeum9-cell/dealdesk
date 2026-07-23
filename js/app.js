@@ -308,6 +308,7 @@ function getDeal() {
     revenueBand: document.getElementById("f-revenue").value,
     context: document.getElementById("f-context").value.trim(),
     lookup: state.lookup || null,
+    profile: readProfile(),
     situation: {
       goal: sval("s-goal"),
       marginTrend: sval("s-margin"),
@@ -318,6 +319,21 @@ function getDeal() {
       competition: sval("s-competition"),
       urgency: sval("s-urgency"),
     },
+  };
+}
+
+// Optional manual company profile for private companies
+function readProfile() {
+  const lines = (id) =>
+    document.getElementById(id).value.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+  const split = (l) => {
+    const i = l.indexOf(":");
+    return i > 0 ? { head: l.slice(0, i).trim(), tail: l.slice(i + 1).trim() } : { head: "", tail: l };
+  };
+  return {
+    people: lines("p-people").map((l) => { const s = split(l); return { role: s.head || "[Role]", name: s.tail }; }),
+    products: lines("p-products").map((l) => { const s = split(l); return { name: s.head || s.tail, desc: s.head ? s.tail : "" }; }),
+    news: lines("p-news"),
   };
 }
 

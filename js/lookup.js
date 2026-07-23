@@ -108,7 +108,8 @@ async function lookupCompany(name) {
   const chairIds = [currentPersonId(claims, "P488")].filter(Boolean);
   const hqIds = refOf("P159", 1);
   const industryIds = refOf("P452", 2);
-  refIds.push(...ceoIds, ...chairIds, ...hqIds, ...industryIds);
+  const productIds = refOf("P1056", 4); // product or material produced
+  refIds.push(...ceoIds, ...chairIds, ...hqIds, ...industryIds, ...productIds);
   let labels = {};
   if (refIds.length) {
     const lab = await wdGet({ action: "wbgetentities", ids: [...new Set(refIds)].join("|"), props: "labels", languages: "en" });
@@ -140,6 +141,29 @@ async function lookupCompany(name) {
   })();
   const employees = latestQuantity(claims, "P1128");
 
+  // Recent news via GDELT, strictly best effort: it rate limits hard,
+  // so one attempt with a short timeout, and silence on any failure.
+  let news = null;
+  try {
+    const q = encodeURIComponent('"' + (hit.label || name) + '"');
+    const res = await fetch(
+      `https://api.gdeltproject.org/api/v2/doc/doc?query=${q}&mode=artlist&maxrecords=6&format=json&timespan=3months&sort=datedesc`,
+      { signal: AbortSignal.timeout(6000) }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const arts = (data.articles || []).filter((a) => a.title && (!a.language || a.language === "English")).slice(0, 3);
+      if (arts.length) {
+        news = arts.map((a) => ({
+          title: softenLookupText(a.title),
+          source: a.domain || "",
+          date: a.seendate ? `${months[Number(a.seendate.slice(4, 6)) - 1]} ${a.seendate.slice(0, 4)}` : "",
+        }));
+      }
+    }
+  } catch (e) { /* news stays null; placeholders will render */ }
+
   return {
     id: hit.id,
     label: hit.label || name,
@@ -150,8 +174,10 @@ async function lookupCompany(name) {
     chair: chairIds.length ? labels[chairIds[0]] : null,
     hq: hqIds.length ? labels[hqIds[0]] : null,
     industries: industryIds.map((i) => labels[i]).filter(Boolean).map(softenLookupText),
+    products: productIds.map((i) => labels[i]).filter(Boolean).map(softenLookupText),
     founded,
     employees,
     revenueSeries: revenueSeriesFromClaims(claims),
+    news,
   };
 }

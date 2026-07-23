@@ -310,9 +310,7 @@ async function generateSummaryDocx(deal, m) {
     sourceLine(srcText),
 
     h1("3. Recent news"),
-    bodyPara("Recent company news relevant to the engagement objective, with links to sources:", {}),
-    bodyPara("[Headline 1: from the company newsroom or investor relations page]", { bullet: true }),
-    bodyPara("[Headline 2: from sector press or analyst coverage]", { bullet: true }),
+    ...newsSection(deal),
 
     h1("4. Key people"),
     peopleTable(deal),
@@ -323,7 +321,7 @@ async function generateSummaryDocx(deal, m) {
     ),
 
     h1("5. Key products"),
-    productsTable(),
+    productsTable(deal),
     sourceLine("Source: Company financial statements; segment reporting where available"),
 
     ...analystNotesSection(deal),
@@ -427,7 +425,46 @@ function lookupProfileParas(deal) {
   return out;
 }
 
+// House rule applies to user typed profile text too
+function softenText(s) {
+  return String(s)
+    .replace(/(\d)\s*[-–—]\s*(\d)/g, "$1 to $2")
+    .replace(/[—–]/g, ", ")
+    .replace(/-/g, " ")
+    .trim();
+}
+
+function newsSection(deal) {
+  const manual = deal.profile && deal.profile.news && deal.profile.news.length ? deal.profile.news : null;
+  const looked = deal.lookup && deal.lookup.news && deal.lookup.news.length ? deal.lookup.news : null;
+  if (manual) {
+    return [
+      bodyPara("Recent company news relevant to the engagement objective, as provided:", {}),
+      ...manual.slice(0, 4).map((n) => bodyPara(softenText(n), { bullet: true })),
+      sourceLine("Source: As provided with the engagement request"),
+    ];
+  }
+  if (looked) {
+    return [
+      bodyPara("Recent coverage mentioning the company, from the GDELT global news index:", {}),
+      ...looked.map((n) => bodyPara(`${n.title}${n.source ? ` (${n.source}${n.date ? ", " + n.date : ""})` : ""}`, { bullet: true })),
+      sourceLine("Source: GDELT news index; verify against the company newsroom"),
+    ];
+  }
+  return [
+    bodyPara("Recent company news relevant to the engagement objective, with links to sources:", {}),
+    bodyPara("[Headline 1: from the company newsroom or investor relations page]", { bullet: true }),
+    bodyPara("[Headline 2: from sector press or analyst coverage]", { bullet: true }),
+  ];
+}
+
 function peopleTable(deal) {
+  const manual = deal.profile && deal.profile.people && deal.profile.people.length ? deal.profile.people : null;
+  if (manual) {
+    const rows = manual.slice(0, 5).map((p) => [softenText(p.role), softenText(p.name)]);
+    while (rows.length < 3) rows.push(["[Other key role]", "[Name]"]);
+    return placeholderTable(["Role", "Name"], rows);
+  }
   const L = deal.lookup || {};
   return placeholderTable(
     ["Role", "Name"],
@@ -440,7 +477,21 @@ function peopleTable(deal) {
   );
 }
 
-function productsTable() {
+function productsTable(deal) {
+  const manual = deal.profile && deal.profile.products && deal.profile.products.length ? deal.profile.products : null;
+  if (manual) {
+    return placeholderTable(
+      ["Name", "Revenue", "Description"],
+      manual.slice(0, 5).map((p) => [softenText(p.name), "[$M]", softenText(p.desc) || "[Brief description]"])
+    );
+  }
+  const looked = deal.lookup && deal.lookup.products && deal.lookup.products.length ? deal.lookup.products : null;
+  if (looked) {
+    return placeholderTable(
+      ["Name", "Revenue", "Description"],
+      looked.slice(0, 4).map((p) => [p.charAt(0).toUpperCase() + p.slice(1), "[$M]", "[Confirm revenue split in interviews]"])
+    );
+  }
   return placeholderTable(
     ["Name", "Revenue", "Description"],
     [
@@ -579,6 +630,29 @@ async function generateGuideDocx(deal, m) {
 const SLIDE_W = 13.33;
 const MARGIN = 0.45;
 
+/* Deterministic text fitting: PowerPoint only applies its shrink
+   autofit when a box is edited, so on first open long text would
+   still spill. Instead the fitting font size is computed here, with
+   conservative width math (0.6em average character, 1.4 line height,
+   0.1in internal margins), and written into the file directly. */
+function fitSize(text, wIn, hIn, baseSize) {
+  return fitSizeLines([String(text)], wIn, hIn, baseSize);
+}
+
+function fitSizeLines(lines, wIn, hIn, baseSize) {
+  const usableW = Math.max(0.3, wIn - 0.1);
+  let size = baseSize;
+  while (size > 8) {
+    const fontIn = size / 72;
+    const perLine = Math.max(1, Math.floor(usableW / (fontIn * 0.6)));
+    let needed = 0;
+    for (const l of lines) needed += Math.max(1, Math.ceil(String(l).length / perLine));
+    if (needed * fontIn * 1.4 <= hIn) break;
+    size -= 0.5;
+  }
+  return size;
+}
+
 // Revenue columns plus a separate EBITDA margin line on the summary
 // slide. Two charts, one measure each: never a dual axis. Single
 // series per chart, so no legends; values labeled directly, no
@@ -651,10 +725,11 @@ function addFurniture(slide, { kicker, title, source, takeaway }) {
     });
   }
   // Action title: full-sentence takeaway, fixed position, largest text
-  // on the slide. fit shrink keeps long titles inside the box.
+  // on the slide. Font size is pre computed to fit the box.
   slide.addText(title, {
     x: MARGIN, y: 0.5, w: SLIDE_W - 2 * MARGIN, h: 0.9,
-    fontFace: THEME.serif, fontSize: 19, color: THEME.ink, bold: false, valign: "top",
+    fontFace: THEME.serif, fontSize: fitSize(title, SLIDE_W - 2 * MARGIN, 0.9, 19),
+    color: THEME.ink, bold: false, valign: "top",
     fit: "shrink",
   });
   if (takeaway) {
@@ -662,7 +737,8 @@ function addFurniture(slide, { kicker, title, source, takeaway }) {
     slide.addShape("rect", { x: MARGIN, y: 6.42, w: 0.06, h: 0.52, fill: { color: THEME.accent }, line: { type: "none" } });
     slide.addText(takeaway, {
       x: MARGIN + 0.18, y: 6.42, w: SLIDE_W - 2 * MARGIN - 0.3, h: 0.52,
-      fontFace: THEME.sans, fontSize: 12.5, bold: true, color: THEME.ink, valign: "middle",
+      fontFace: THEME.sans, fontSize: fitSize(takeaway, SLIDE_W - 2 * MARGIN - 0.3, 0.52, 12.5),
+      bold: true, color: THEME.ink, valign: "middle",
       fit: "shrink",
     });
   }
@@ -700,8 +776,10 @@ async function generateSynergyPptx(deal, m) {
   let s = pptx.addSlide();
   s.background = { color: THEME.ink };
   s.addText(dealCode(deal), { x: 0.6, y: 2.0, w: 11, h: 0.4, fontFace: THEME.sans, fontSize: 13, bold: true, color: THEME.accent, charSpacing: 3 });
-  s.addText(P.deckTitle.charAt(0).toUpperCase() + P.deckTitle.slice(1), { x: 0.6, y: 2.45, w: 12, h: 1.6, fontFace: THEME.serif, fontSize: 38, color: THEME.onInk });
-  s.addText(`${deal.company} | ${deal.dealType} | ${todayLabel()}`, { x: 0.6, y: 4.1, w: 11, h: 0.4, fontFace: THEME.sans, fontSize: 13, color: "B8C2CC" });
+  const tTitle = P.deckTitle.charAt(0).toUpperCase() + P.deckTitle.slice(1);
+  s.addText(tTitle, { x: 0.6, y: 2.45, w: 12, h: 1.6, fontFace: THEME.serif, fontSize: fitSize(tTitle, 12, 1.6, 38), color: THEME.onInk });
+  const tSub = `${deal.company} | ${deal.dealType} | ${todayLabel()}`;
+  s.addText(tSub, { x: 0.6, y: 4.1, w: 11, h: 0.4, fontFace: THEME.sans, fontSize: fitSize(tSub, 11, 0.4, 13), color: "B8C2CC" });
   s.addText("Private and confidential. Draft for discussion purposes only." + (m.source === "sample" ? " Prepared on illustrative sample financials." : ""), {
     x: 0.6, y: 6.9, w: 11, h: 0.3, fontFace: THEME.sans, fontSize: 9, color: "8A97A3",
   });
@@ -719,7 +797,8 @@ async function generateSynergyPptx(deal, m) {
   // Left column: framing plus the two category signposts
   s.addText(n.dealFrame, {
     x: MARGIN, y: 1.42, w: 6.15, h: 0.95,
-    fontFace: THEME.sans, fontSize: 12, color: "404850", valign: "top",
+    fontFace: THEME.sans, fontSize: fitSize(n.dealFrame, 6.15, 0.95, 12),
+    color: "404850", valign: "top",
     fit: "shrink",
   });
   groups.forEach((g, gi) => {
@@ -728,12 +807,11 @@ async function generateSynergyPptx(deal, m) {
       x: MARGIN, y, w: 6.15, h: 0.3,
       fontFace: THEME.sans, fontSize: 11, bold: true, color: THEME.accent, charSpacing: 1,
     });
+    const sign = g.items.map((it) => `${all.findIndex((a) => a.name === it.name) + 1}. ${it.name}`);
+    const signSize = fitSizeLines(sign, 6.15, 1.45, 12);
     s.addText(
-      g.items.map((it) => ({
-        text: `${all.findIndex((a) => a.name === it.name) + 1}. ${it.name}`,
-        options: { breakLine: true, color: THEME.ink, bold: false },
-      })),
-      { x: MARGIN, y: y + 0.32, w: 6.15, h: 1.45, fontFace: THEME.sans, fontSize: 12, lineSpacing: 21, valign: "top", fit: "shrink" }
+      sign.map((t) => ({ text: t, options: { breakLine: true, color: THEME.ink, bold: false } })),
+      { x: MARGIN, y: y + 0.32, w: 6.15, h: 1.45, fontFace: THEME.sans, fontSize: signSize, lineSpacing: signSize * 1.7, valign: "top", fit: "shrink" }
     );
   });
   // Right column: the financial context as charts (one measure per chart)
@@ -756,16 +834,18 @@ async function generateSynergyPptx(deal, m) {
         fill: { color: gi === 0 ? THEME.accent2 : THEME.accent },
         align: "center", valign: "middle", fontFace: THEME.sans, fontSize: 13, bold: true, color: THEME.onAccent,
       });
+      const nameSize = fitSize(it.name + "   Impact: Medium  |  Ease: Medium", 11.7, 0.42, 15);
       sl.addText(
         [
-          { text: it.name, options: { bold: true, color: THEME.ink, fontSize: 15 } },
-          { text: `   Impact: ${it.impact}  |  Ease: ${it.ease}`, options: { color: THEME.gray, fontSize: 10.5 } },
+          { text: it.name, options: { bold: true, color: THEME.ink, fontSize: nameSize } },
+          { text: `   Impact: ${it.impact}  |  Ease: ${it.ease}`, options: { color: THEME.gray, fontSize: Math.min(10.5, nameSize - 3) } },
         ],
         { x: 1.05, y, w: 11.7, h: 0.42, fontFace: THEME.sans, valign: "middle", fit: "shrink" }
       );
       sl.addText(it.rationale, {
         x: 1.05, y: y + 0.44, w: 11.7, h: 0.95,
-        fontFace: THEME.sans, fontSize: 12.5, color: "404850", valign: "top", lineSpacing: 18,
+        fontFace: THEME.sans, fontSize: fitSize(it.rationale, 11.7, 0.95, 12.5),
+        color: "404850", valign: "top", lineSpacing: 18,
         fit: "shrink",
       });
     });
@@ -803,12 +883,11 @@ async function generateSynergyPptx(deal, m) {
   });
   // Legend list, right column
   s.addText("Opportunities", { x: 8.55, y: 1.55, w: 4.3, h: 0.3, fontFace: THEME.sans, fontSize: 11, bold: true, color: THEME.ink });
+  const legend = all.map((it, i) => `${i + 1}. ${it.name}`);
+  const legendSize = fitSizeLines(legend, 4.3, 4.2, 11);
   s.addText(
-    all.map((it, i) => ({
-      text: `${i + 1}. ${it.name}`,
-      options: { breakLine: true, color: "404850" },
-    })),
-    { x: 8.55, y: 1.9, w: 4.3, h: 4.2, fontFace: THEME.sans, fontSize: 11, lineSpacing: 20, valign: "top", fit: "shrink" }
+    legend.map((t) => ({ text: t, options: { breakLine: true, color: "404850" } })),
+    { x: 8.55, y: 1.9, w: 4.3, h: 4.2, fontFace: THEME.sans, fontSize: legendSize, lineSpacing: legendSize * 1.8, valign: "top", fit: "shrink" }
   );
   s.addText([
     { text: "● ", options: { color: THEME.accent2 } }, { text: groups[0].label + "   ", options: { color: THEME.gray } },
@@ -823,150 +902,252 @@ async function generateSynergyPptx(deal, m) {
    ================================================================ */
 
 function generateModelXlsx(deal, m) {
-  // PwC Task 4 structure: inputs on their own sheet in labeled cells, the
-  // model on a second sheet as pure formulas (no hardcoding), three
-  // scenarios: conservative (low end), midpoint, aggressive (high end).
+  // Four linked sheets, banker style: yellow input cells drive every
+  // other number. Inputs (assumptions and multiples), Model
+  // (historicals plus a five year projection), Synergies (three
+  // scenarios), Valuation (multiple driven, with value creation).
   const wb = XLSX.utils.book_new();
   const term = practiceTerm(deal);
-  const Term = term.charAt(0).toUpperCase() + term.slice(1);
   const sc = computeScenarios(deal, m);
   const inp = sc.inputs;
   const NUMFMT = "#,##0.0;(#,##0.0)";
   const PCT = "0.0%";
+  const MULT = '0.0"x"';
 
-  /* --- Inputs sheet: every changeable number lives here, labeled --- */
-  const aoaI = [];
-  const refs = {};
-  const push = (row) => aoaI.push(row);
-  push([`${deal.company}: ${term} model inputs ($M)`, null]);
-  push([null, null]);
-  push([`Client data (target), ${fyLabel(m.lastYear)}`, null]);
-  push(["Revenue", inp.revenue]);
-  refs.revenue = "B" + aoaI.length;
-  inp.lines.forEach((l) => {
-    push([l.label, l.base]);
-    refs[l.key + "Base"] = "B" + aoaI.length;
-  });
-  push([null, null]);
-  push([`Revenue ${term} assumptions (INPUTS: change these, the model recalculates)`, null]);
-  push(["Revenue uplift, low end", inp.revLow]);
-  refs.revLow = "B" + aoaI.length;
-  push(["Revenue uplift, high end", inp.revHigh]);
-  refs.revHigh = "B" + aoaI.length;
-  push(["Flow through margin on new revenue" + (inp.flowDefaulted ? " (defaulted: company margin unavailable or negative)" : ""), inp.flowMargin]);
-  refs.margin = "B" + aoaI.length;
-  push([null, null]);
-  push([`Cost ${term} assumptions, each applied to its own cost line only (INPUTS)`, null]);
-  inp.lines.forEach((l) => {
-    push([`${l.label}: ${term} %, low end`, l.low]);
-    refs[l.key + "Low"] = "B" + aoaI.length;
-    push([`${l.label}: ${term} %, high end`, l.high]);
-    refs[l.key + "High"] = "B" + aoaI.length;
-  });
-  push([null, null]);
-  push(["Conservative = low end of every range. Aggressive = high end. Midpoint = average.", null]);
+  const thin = { style: "thin", color: { rgb: "D9D9DD" } };
+  const box = { top: thin, bottom: thin, left: thin, right: thin };
+  const ST = {
+    title: { font: { name: "Arial", sz: 13, bold: true, color: { rgb: THEME.ink } } },
+    note: { font: { name: "Arial", sz: 9, italic: true, color: { rgb: "63666A" } } },
+    section: { font: { name: "Arial", sz: 10, bold: true, color: { rgb: THEME.onInk } }, fill: { patternType: "solid", fgColor: { rgb: THEME.ink } } },
+    label: { font: { name: "Arial", sz: 10, color: { rgb: "1A1A1A" } } },
+    input: { font: { name: "Arial", sz: 10, bold: true, color: { rgb: "1F4E79" } }, fill: { patternType: "solid", fgColor: { rgb: "FFF2CC" } }, border: box, alignment: { horizontal: "right" } },
+    calc: { font: { name: "Arial", sz: 10, color: { rgb: "1A1A1A" } }, alignment: { horizontal: "right" } },
+    calcBold: { font: { name: "Arial", sz: 10, bold: true, color: { rgb: "1A1A1A" } }, fill: { patternType: "solid", fgColor: { rgb: "F2F5F7" } }, border: { top: { style: "thin", color: { rgb: THEME.ink } } }, alignment: { horizontal: "right" } },
+    labelBold: { font: { name: "Arial", sz: 10, bold: true, color: { rgb: "1A1A1A" } }, fill: { patternType: "solid", fgColor: { rgb: "F2F5F7" } }, border: { top: { style: "thin", color: { rgb: THEME.ink } } } },
+    pctRow: { font: { name: "Arial", sz: 9, italic: true, color: { rgb: "63666A" } }, alignment: { horizontal: "right" } },
+    yearA: { font: { name: "Arial", sz: 10, bold: true, color: { rgb: THEME.onInk } }, fill: { patternType: "solid", fgColor: { rgb: THEME.ink } }, alignment: { horizontal: "center" } },
+    yearF: { font: { name: "Arial", sz: 10, bold: true, color: { rgb: THEME.ink } }, fill: { patternType: "solid", fgColor: { rgb: THEME.fillAccent } }, alignment: { horizontal: "center" } },
+  };
 
-  const wsI = XLSX.utils.aoa_to_sheet(aoaI);
-  [refs.revLow, refs.revHigh, refs.margin, ...inp.lines.flatMap((l) => [refs[l.key + "Low"], refs[l.key + "High"]])]
-    .forEach((c) => { if (wsI[c]) wsI[c].z = PCT; });
-  [refs.revenue, ...inp.lines.map((l) => refs[l.key + "Base"])].forEach((c) => { if (wsI[c]) wsI[c].z = NUMFMT; });
-  wsI["!cols"] = [{ wch: 58 }, { wch: 14 }];
-  XLSX.utils.book_append_sheet(wb, wsI, "Inputs");
-
-  /* --- Model sheet: formulas only, three scenario columns --- */
-  const I = (ref) => `Inputs!$${ref.slice(0, 1)}$${ref.slice(1)}`;
-  const scenCols = ["B", "C", "D"];
-  const scen = [sc.conservative, sc.midpoint, sc.aggressive];
-  const revF = [
-    `${I(refs.revenue)}*${I(refs.revLow)}*${I(refs.margin)}`,
-    `${I(refs.revenue)}*AVERAGE(${I(refs.revLow)},${I(refs.revHigh)})*${I(refs.margin)}`,
-    `${I(refs.revenue)}*${I(refs.revHigh)}*${I(refs.margin)}`,
-  ];
-  const aoaM = [
-    [`${deal.company}: directional ${term} model ($M, annual EBIT impact)`, null, null, null],
-    [null, "Conservative", "Midpoint", "Aggressive"],
-    [`Revenue ${term} (at flow through margin)`, null, null, null],
-    ...inp.lines.map((l) => [`${l.label} ${term}`, null, null, null]),
-    [`Total ${term} value`, null, null, null],
-    ["Total as % of target revenue", null, null, null],
-    [null, null, null, null],
-    ["All cells on this sheet are formulas driven by the Inputs sheet.", null, null, null],
-  ];
-  const wsM = XLSX.utils.aoa_to_sheet(aoaM);
-  const lineRow = (i) => 4 + i; // first cost line sits on sheet row 4
-  const totalRow = 4 + inp.lines.length;
-  scenCols.forEach((c, si) => {
-    wsM[c + "3"] = { t: "n", v: scen[si].revenueImpact, f: revF[si], z: NUMFMT };
-    inp.lines.forEach((l, li) => {
-      const lf = [
-        `${I(refs[l.key + "Base"])}*${I(refs[l.key + "Low"])}`,
-        `${I(refs[l.key + "Base"])}*AVERAGE(${I(refs[l.key + "Low"])},${I(refs[l.key + "High"])})`,
-        `${I(refs[l.key + "Base"])}*${I(refs[l.key + "High"])}`,
-      ][si];
-      const lv = l.base * [l.low, (l.low + l.high) / 2, l.high][si];
-      wsM[c + lineRow(li)] = { t: "n", v: lv, f: lf, z: NUMFMT };
-    });
-    wsM[c + totalRow] = {
-      t: "n",
-      v: scen[si].total,
-      f: `SUM(${c}3:${c}${totalRow - 1})`,
-      z: NUMFMT,
-    };
-    wsM[c + (totalRow + 1)] = {
-      t: "n",
-      v: scen[si].total / inp.revenue,
-      f: `${c}${totalRow}/${I(refs.revenue)}`,
-      z: PCT,
-    };
-  });
-  wsM["!cols"] = [{ wch: 42 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
-  wsM["!ref"] = `A1:D${aoaM.length}`;
-  XLSX.utils.book_append_sheet(wb, wsM, `${Term} Model`);
-
-  // Historicals sheet with live growth and margin formula rows
-  const hist = [
-    ["Historical financials ($M)", ...m.years.map((y) => fyLabel(y))],
-    ["Revenue", ...m.series.revenue],
-  ];
-  const revRow = 2;
-  if (m.series.cogs) hist.push(["COGS", ...m.series.cogs]);
-  if (m.series.opex) hist.push(["Opex", ...m.series.opex]);
-  let ebRow = null;
-  if (m.ebitdaSeries) {
-    hist.push(["EBITDA", ...m.ebitdaSeries]);
-    ebRow = hist.length;
+  function newSheet(widths) {
+    return { ws: { "!cols": widths.map((wch) => ({ wch })) }, maxR: 0, maxC: 0 };
   }
-  hist.push(["Revenue growth (%)", ...m.years.map(() => null)]);
-  const growthRow = hist.length;
-  if (ebRow) hist.push(["EBITDA margin (%)", ...m.years.map(() => null)]);
-  const marginRow = ebRow ? hist.length : null;
+  function put(sh, r, c, v, opts = {}) {
+    const addr = XLSX.utils.encode_cell({ r, c });
+    const cell = {};
+    if (opts.f !== undefined) { cell.f = opts.f; cell.t = "n"; cell.v = opts.v !== undefined ? opts.v : 0; }
+    else if (typeof v === "number") { cell.t = "n"; cell.v = v; }
+    else { cell.t = "s"; cell.v = v === null || v === undefined ? "" : String(v); }
+    if (opts.z) cell.z = opts.z;
+    if (opts.s) cell.s = opts.s;
+    sh.ws[addr] = cell;
+    sh.maxR = Math.max(sh.maxR, r);
+    sh.maxC = Math.max(sh.maxC, c);
+    return addr;
+  }
+  function section(sh, r, text, span) {
+    for (let c = 0; c < span; c++) put(sh, r, c, c === 0 ? text : "", { s: ST.section });
+  }
+  function finish(sh, name) {
+    sh.ws["!ref"] = "A1:" + XLSX.utils.encode_cell({ r: sh.maxR, c: sh.maxC });
+    XLSX.utils.book_append_sheet(wb, sh.ws, name);
+  }
 
-  const wsH = XLSX.utils.aoa_to_sheet(hist);
-  Object.keys(wsH).forEach((k) => {
-    if (!k.startsWith("!") && wsH[k].t === "n") wsH[k].z = NUMFMT;
-  });
-  const yCols = ["B", "C", "D", "E", "F", "G", "H"].slice(0, m.years.length);
-  yCols.forEach((c, i) => {
-    if (i > 0) {
-      wsH[c + growthRow] = {
-        t: "n",
-        v: m.series.revenue[i] / m.series.revenue[i - 1] - 1,
-        f: `(${c}${revRow}-${yCols[i - 1]}${revRow})/${yCols[i - 1]}${revRow}`,
-        z: PCT,
-      };
+  /* ---------------- Sheet 1: Inputs ---------------- */
+  const I = newSheet([48, 14]);
+  const refs = {};
+  let r = 0;
+  put(I, r++, 0, `${deal.company}: model inputs ($ millions)`, { s: ST.title });
+  put(I, r++, 0, "Yellow cells are inputs. Every other number in this workbook is a live formula linked to them.", { s: ST.note });
+  r++;
+  section(I, r++, "CLIENT DATA, LATEST ACTUAL YEAR " + fyLabel(m.lastYear), 2);
+  put(I, r, 0, "Revenue", { s: ST.label });
+  refs.revenue = put(I, r++, 1, inp.revenue, { z: NUMFMT, s: ST.input });
+  for (const l of inp.lines) {
+    put(I, r, 0, l.label, { s: ST.label });
+    refs[l.key + "Base"] = put(I, r++, 1, l.base, { z: NUMFMT, s: ST.input });
+  }
+  r++;
+  section(I, r++, "PROJECTION ASSUMPTIONS", 2);
+  const growthDefault = Math.max(-0.5, Math.min(0.5, m.revenueCAGR));
+  put(I, r, 0, "Revenue growth, annual", { s: ST.label });
+  refs.growth = put(I, r++, 1, growthDefault, { z: PCT, s: ST.input });
+  const projMarginDefault = m.ebitdaMargin !== null && m.ebitdaMargin > 0 ? Math.round(m.ebitdaMargin * 1000) / 1000 : 0.15;
+  put(I, r, 0, "EBITDA margin, projection years", { s: ST.label });
+  refs.projMargin = put(I, r++, 1, projMarginDefault, { z: PCT, s: ST.input });
+  r++;
+  section(I, r++, "SYNERGY ASSUMPTIONS, EACH APPLIED TO ITS OWN LINE", 2);
+  put(I, r, 0, "Revenue uplift, low end", { s: ST.label });
+  refs.revLow = put(I, r++, 1, inp.revLow, { z: PCT, s: ST.input });
+  put(I, r, 0, "Revenue uplift, high end", { s: ST.label });
+  refs.revHigh = put(I, r++, 1, inp.revHigh, { z: PCT, s: ST.input });
+  put(I, r, 0, "Flow through margin on new revenue" + (inp.flowDefaulted ? " (defaulted)" : ""), { s: ST.label });
+  refs.margin = put(I, r++, 1, inp.flowMargin, { z: PCT, s: ST.input });
+  for (const l of inp.lines) {
+    put(I, r, 0, `${l.label}: ${term} %, low end`, { s: ST.label });
+    refs[l.key + "Low"] = put(I, r++, 1, l.low, { z: PCT, s: ST.input });
+    put(I, r, 0, `${l.label}: ${term} %, high end`, { s: ST.label });
+    refs[l.key + "High"] = put(I, r++, 1, l.high, { z: PCT, s: ST.input });
+  }
+  r++;
+  section(I, r++, "VALUATION ASSUMPTIONS", 2);
+  const evMultDefault = m.ebitdaMargin !== null && m.ebitdaMargin > 0.2 ? 10 : m.ebitdaMargin !== null && m.ebitdaMargin > 0.1 ? 8 : 6;
+  put(I, r, 0, "EV to EBITDA multiple", { s: ST.label });
+  refs.evM = put(I, r++, 1, evMultDefault, { z: MULT, s: ST.input });
+  put(I, r, 0, "EV to revenue multiple, cross check", { s: ST.label });
+  refs.revM = put(I, r++, 1, 1.5, { z: MULT, s: ST.input });
+  finish(I, "Inputs");
+  const IR = (a) => "Inputs!" + a.replace(/([A-Z]+)(\d+)/, "$$$1$$$2");
+
+  /* ---------------- Sheet 2: Model ---------------- */
+  const M = newSheet([26].concat(Array(m.years.length + 5).fill(11)));
+  r = 0;
+  put(M, r++, 0, `${deal.company}: historicals and five year projection ($ millions)`, { s: ST.title });
+  put(M, r++, 0, "A = actual, F = forecast. Forecast cells are formulas driven by the Inputs sheet.", { s: ST.note });
+  const nA = m.years.length;
+  put(M, r, 0, "", { s: ST.section });
+  for (let i = 0; i < nA; i++) put(M, r, 1 + i, fyLabel(m.years[i]), { s: ST.yearA });
+  for (let i = 0; i < 5; i++) put(M, r, 1 + nA + i, fyLabel(m.lastYear + 1 + i, "F"), { s: ST.yearF });
+  r++;
+  const rev = m.series.revenue;
+  const growthV = growthDefault;
+  const revAddrs = [];
+  put(M, r, 0, "Revenue", { s: ST.label });
+  for (let i = 0; i < nA; i++) revAddrs.push(put(M, r, 1 + i, rev[i], { z: NUMFMT, s: ST.calc }));
+  let prevRevV = rev[nA - 1];
+  for (let i = 0; i < 5; i++) {
+    const prevAddr = revAddrs[revAddrs.length - 1];
+    prevRevV = prevRevV * (1 + growthV);
+    revAddrs.push(put(M, r, 1 + nA + i, null, { f: `${prevAddr}*(1+${IR(refs.growth)})`, v: prevRevV, z: NUMFMT, s: ST.calc }));
+  }
+  r++;
+  const lineAddrs = {};
+  for (const key of ["cogs", "opex"]) {
+    if (!m.series[key]) continue;
+    const label = key === "cogs" ? "COGS" : "Opex / SG&A";
+    const arr = m.series[key];
+    lineAddrs[key] = [];
+    put(M, r, 0, label, { s: ST.label });
+    for (let i = 0; i < nA; i++) lineAddrs[key].push(put(M, r, 1 + i, arr[i], { z: NUMFMT, s: ST.calc }));
+    const ratioV = arr[nA - 1] / rev[nA - 1];
+    for (let i = 0; i < 5; i++) {
+      lineAddrs[key].push(put(M, r, 1 + nA + i, null, {
+        f: `${revAddrs[nA + i]}*(${lineAddrs[key][nA - 1]}/${revAddrs[nA - 1]})`,
+        v: rev[nA - 1] * Math.pow(1 + growthV, i + 1) * ratioV, z: NUMFMT, s: ST.calc,
+      }));
     }
-    if (marginRow) {
-      wsH[c + marginRow] = {
-        t: "n",
-        v: m.ebitdaSeries[i] / m.series.revenue[i],
-        f: `${c}${ebRow}/${c}${revRow}`,
-        z: PCT,
-      };
+    r++;
+  }
+  const hasLines = !!(m.series.cogs && m.series.opex);
+  const ebitdaAddrs = [];
+  put(M, r, 0, "EBITDA", { s: ST.labelBold });
+  for (let i = 0; i < nA + 5; i++) {
+    if (hasLines) {
+      const v = i < nA
+        ? rev[i] - m.series.cogs[i] - m.series.opex[i]
+        : (rev[nA - 1] - m.series.cogs[nA - 1] - m.series.opex[nA - 1]) * Math.pow(1 + growthV, i - nA + 1);
+      ebitdaAddrs.push(put(M, r, 1 + i, null, { f: `${revAddrs[i]}-${lineAddrs.cogs[i]}-${lineAddrs.opex[i]}`, v, z: NUMFMT, s: ST.calcBold }));
+    } else if (i >= nA) {
+      const v = rev[nA - 1] * Math.pow(1 + growthV, i - nA + 1) * projMarginDefault;
+      ebitdaAddrs.push(put(M, r, 1 + i, null, { f: `${revAddrs[i]}*${IR(refs.projMargin)}`, v, z: NUMFMT, s: ST.calcBold }));
+    } else {
+      ebitdaAddrs.push(null);
+      put(M, r, 1 + i, "n/a", { s: ST.pctRow });
     }
-  });
-  wsH["!ref"] = `A1:${yCols[yCols.length - 1]}${hist.length}`;
-  wsH["!cols"] = [{ wch: 24 }, ...m.years.map(() => ({ wch: 11 }))];
-  XLSX.utils.book_append_sheet(wb, wsH, "Historicals");
+  }
+  r++;
+  put(M, r, 0, "Revenue growth %", { s: ST.label });
+  for (let i = 1; i < nA + 5; i++) {
+    const v = i < nA ? rev[i] / rev[i - 1] - 1 : growthV;
+    put(M, r, 1 + i, null, { f: `(${revAddrs[i]}-${revAddrs[i - 1]})/${revAddrs[i - 1]}`, v, z: PCT, s: ST.pctRow });
+  }
+  r++;
+  if (hasLines) {
+    put(M, r, 0, "EBITDA margin %", { s: ST.label });
+    for (let i = 0; i < nA + 5; i++) {
+      if (!ebitdaAddrs[i]) continue;
+      const revV = i < nA ? rev[i] : rev[nA - 1] * Math.pow(1 + growthV, i - nA + 1);
+      const ebV = i < nA
+        ? rev[i] - m.series.cogs[i] - m.series.opex[i]
+        : (rev[nA - 1] - m.series.cogs[nA - 1] - m.series.opex[nA - 1]) * Math.pow(1 + growthV, i - nA + 1);
+      put(M, r, 1 + i, null, { f: `${ebitdaAddrs[i]}/${revAddrs[i]}`, v: ebV / revV, z: PCT, s: ST.pctRow });
+    }
+    r++;
+  }
+  const baseEbitdaAddr = ebitdaAddrs[hasLines ? nA - 1 : nA];
+  const baseEbitdaV = hasLines
+    ? rev[nA - 1] - m.series.cogs[nA - 1] - m.series.opex[nA - 1]
+    : rev[nA - 1] * (1 + growthV) * projMarginDefault;
+  finish(M, "Model");
+
+  /* ---------------- Sheet 3: Synergies ---------------- */
+  const S = newSheet([42, 14, 14, 14]);
+  r = 0;
+  put(S, r++, 0, `${deal.company}: annual ${term} value scenarios ($ millions)`, { s: ST.title });
+  put(S, r++, 0, "Conservative = low end of every range. Aggressive = high end. Midpoint = average.", { s: ST.note });
+  put(S, r, 0, "", { s: ST.section });
+  ["Conservative", "Midpoint", "Aggressive"].forEach((h, i) => put(S, r, 1 + i, h, { s: ST.yearA }));
+  r++;
+  const scen = [sc.conservative, sc.midpoint, sc.aggressive];
+  const revFormulas = [
+    `${IR(refs.revenue)}*${IR(refs.revLow)}*${IR(refs.margin)}`,
+    `${IR(refs.revenue)}*AVERAGE(${IR(refs.revLow)},${IR(refs.revHigh)})*${IR(refs.margin)}`,
+    `${IR(refs.revenue)}*${IR(refs.revHigh)}*${IR(refs.margin)}`,
+  ];
+  const synFirstExcelRow = r + 1;
+  put(S, r, 0, `Revenue ${term}, at flow through margin`, { s: ST.label });
+  for (let i = 0; i < 3; i++) put(S, r, 1 + i, null, { f: revFormulas[i], v: scen[i].revenueImpact, z: NUMFMT, s: ST.calc });
+  r++;
+  for (const l of inp.lines) {
+    put(S, r, 0, `${l.label} ${term}`, { s: ST.label });
+    const fns = [
+      `${IR(refs[l.key + "Base"])}*${IR(refs[l.key + "Low"])}`,
+      `${IR(refs[l.key + "Base"])}*AVERAGE(${IR(refs[l.key + "Low"])},${IR(refs[l.key + "High"])})`,
+      `${IR(refs[l.key + "Base"])}*${IR(refs[l.key + "High"])}`,
+    ];
+    const vals = [l.base * l.low, l.base * (l.low + l.high) / 2, l.base * l.high];
+    for (let i = 0; i < 3; i++) put(S, r, 1 + i, null, { f: fns[i], v: vals[i], z: NUMFMT, s: ST.calc });
+    r++;
+  }
+  put(S, r, 0, `Total ${term} value`, { s: ST.labelBold });
+  const synTotalAddrs = [];
+  for (let i = 0; i < 3; i++) {
+    const col = XLSX.utils.encode_col(1 + i);
+    synTotalAddrs.push(put(S, r, 1 + i, null, { f: `SUM(${col}${synFirstExcelRow}:${col}${r})`, v: scen[i].total, z: NUMFMT, s: ST.calcBold }));
+  }
+  r++;
+  put(S, r, 0, "Total as % of revenue", { s: ST.label });
+  for (let i = 0; i < 3; i++) put(S, r, 1 + i, null, { f: `${synTotalAddrs[i]}/${IR(refs.revenue)}`, v: scen[i].total / inp.revenue, z: PCT, s: ST.pctRow });
+  finish(S, "Synergies");
+  const synMidRef = "Synergies!" + synTotalAddrs[1];
+
+  /* ---------------- Sheet 4: Valuation ---------------- */
+  const V = newSheet([46, 16]);
+  r = 0;
+  put(V, r++, 0, `${deal.company}: valuation view ($ millions)`, { s: ST.title });
+  put(V, r++, 0, "Change the multiples on the Inputs sheet; every value here recalculates.", { s: ST.note });
+  r++;
+  section(V, r++, "ENTERPRISE VALUE AT THE EV TO EBITDA MULTIPLE", 2);
+  put(V, r, 0, hasLines ? `EBITDA, ${fyLabel(m.lastYear)} actual` : `EBITDA, ${fyLabel(m.lastYear + 1, "F")} projected`, { s: ST.label });
+  const vBase = put(V, r++, 1, null, { f: "Model!" + baseEbitdaAddr, v: baseEbitdaV, z: NUMFMT, s: ST.calc });
+  put(V, r, 0, "Enterprise value at the multiple", { s: ST.label });
+  const vEV = put(V, r++, 1, null, { f: `${vBase}*${IR(refs.evM)}`, v: baseEbitdaV * evMultDefault, z: NUMFMT, s: ST.calc });
+  put(V, r, 0, `Midpoint annual ${term} value`, { s: ST.label });
+  const vSyn = put(V, r++, 1, null, { f: synMidRef, v: sc.midpoint.total, z: NUMFMT, s: ST.calc });
+  put(V, r, 0, `EBITDA including ${term} capture`, { s: ST.label });
+  const vBaseSyn = put(V, r++, 1, null, { f: `${vBase}+${vSyn}`, v: baseEbitdaV + sc.midpoint.total, z: NUMFMT, s: ST.calc });
+  put(V, r, 0, `Enterprise value including ${term} capture`, { s: ST.label });
+  const vEVSyn = put(V, r++, 1, null, { f: `${vBaseSyn}*${IR(refs.evM)}`, v: (baseEbitdaV + sc.midpoint.total) * evMultDefault, z: NUMFMT, s: ST.calc });
+  put(V, r, 0, `Value creation from ${term} capture`, { s: ST.labelBold });
+  put(V, r++, 1, null, { f: `${vEVSyn}-${vEV}`, v: sc.midpoint.total * evMultDefault, z: NUMFMT, s: ST.calcBold });
+  r++;
+  section(V, r++, "REVENUE CROSS CHECK", 2);
+  put(V, r, 0, `Revenue, ${fyLabel(m.lastYear)} actual`, { s: ST.label });
+  const vRev = put(V, r++, 1, null, { f: IR(refs.revenue), v: inp.revenue, z: NUMFMT, s: ST.calc });
+  put(V, r, 0, "Enterprise value at the revenue multiple", { s: ST.label });
+  put(V, r++, 1, null, { f: `${vRev}*${IR(refs.revM)}`, v: inp.revenue * 1.5, z: NUMFMT, s: ST.calc });
+  finish(V, "Valuation");
 
   const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
   return new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });

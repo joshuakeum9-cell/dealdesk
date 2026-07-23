@@ -349,21 +349,40 @@
         <div class="manual-panel" id="manual-panel" hidden>
           <p class="brand-hint">Enter what you have in $ millions. Revenue for at least two years is required; leave anything else blank.</p>
           <div class="manual-grid">
-            <span class="manual-head">$M</span>
+            <span class="manual-head">Year</span>
             <input type="number" id="my-0" value="2021" class="manual-year" />
             <input type="number" id="my-1" value="2022" class="manual-year" />
             <input type="number" id="my-2" value="2023" class="manual-year" />
             <input type="number" id="my-3" value="2024" class="manual-year" />
-            <span class="manual-head">Revenue</span>
+            <span class="manual-head">Revenue, $ millions</span>
             <input type="number" id="mr-0" placeholder="0.0" /><input type="number" id="mr-1" placeholder="0.0" /><input type="number" id="mr-2" placeholder="0.0" /><input type="number" id="mr-3" placeholder="0.0" />
-            <span class="manual-head">COGS</span>
+            <span class="manual-head">COGS, $ millions</span>
             <input type="number" id="mc-0" placeholder="optional" /><input type="number" id="mc-1" placeholder="optional" /><input type="number" id="mc-2" placeholder="optional" /><input type="number" id="mc-3" placeholder="optional" />
-            <span class="manual-head">Opex / SG&amp;A</span>
+            <span class="manual-head">Opex / SG&amp;A, $ millions</span>
             <input type="number" id="mo-0" placeholder="optional" /><input type="number" id="mo-1" placeholder="optional" /><input type="number" id="mo-2" placeholder="optional" /><input type="number" id="mo-3" placeholder="optional" />
           </div>
           <button class="btn btn-sm btn-primary" onclick="applyManualFinancials()">Use these numbers</button>
           <span class="manual-status" id="manual-status"></span>
         </div>
+
+        <fieldset class="brand-fieldset">
+          <legend>Company profile (optional)</legend>
+          <p class="brand-hint">For private companies, add what the documents cannot look up online. One item per line; these fill the Key people, Key products, and Recent news sections.</p>
+          <div class="form-row-3">
+            <div class="form-field">
+              <label for="p-people">Key people (Role: Name)</label>
+              <textarea id="p-people" rows="3" placeholder="Chief Executive Officer: Dana Whitfield&#10;Chief Financial Officer: Marcus Lee"></textarea>
+            </div>
+            <div class="form-field">
+              <label for="p-products">Key products (Name: description)</label>
+              <textarea id="p-products" rows="3" placeholder="ClearFlow valves: industrial flow control&#10;SiteSense sensors: remote monitoring"></textarea>
+            </div>
+            <div class="form-field">
+              <label for="p-news">Recent news (headline, source)</label>
+              <textarea id="p-news" rows="3" placeholder="Opened a second Ohio plant, Trade Journal&#10;Named a top regional employer, Business Weekly"></textarea>
+            </div>
+          </div>
+        </fieldset>
 
         <div class="upload-zones">
           <div class="upload-zone" id="zone-financials" onclick="openPicker('financials')">
@@ -528,7 +547,7 @@
   <input type="file" id="picker-org" accept=".pdf,.docx,.pptx" hidden multiple />
   <input type="file" id="picker-notes" accept=".docx,.pdf,.txt" hidden multiple />
 
-  <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
   <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
