@@ -1147,6 +1147,35 @@ function generateModelXlsx(deal, m) {
   const vRev = put(V, r++, 1, null, { f: IR(refs.revenue), v: inp.revenue, z: NUMFMT, s: ST.calc });
   put(V, r, 0, "Enterprise value at the revenue multiple", { s: ST.label });
   put(V, r++, 1, null, { f: `${vRev}*${IR(refs.revM)}`, v: inp.revenue * 1.5, z: NUMFMT, s: ST.calc });
+  r++;
+
+  /* Two way sensitivity: EV across growth (rows) and multiple (cols).
+     Every cell is a formula, so editing the Inputs shifts the whole
+     grid around the new base case. */
+  section(V, r++, "SENSITIVITY: EV ON NEXT YEAR EBITDA, ACROSS GROWTH AND MULTIPLE", 6);
+  const marginExpr = hasLines ? `(${vBase}/${vRev})` : IR(refs.projMargin);
+  const marginVal = hasLines ? baseEbitdaV / inp.revenue : projMarginDefault;
+  const dgs = [-0.02, -0.01, 0, 0.01, 0.02];
+  const dms = [-2, -1, 0, 1, 2];
+  put(V, r, 0, "Growth below, multiple right", { s: ST.note });
+  dms.forEach((dm, ci) => {
+    put(V, r, 1 + ci, null, { f: `${IR(refs.evM)}+${dm}`, v: evMultDefault + dm, z: MULT, s: ST.yearA });
+  });
+  r++;
+  dgs.forEach((dg) => {
+    put(V, r, 0, null, { f: `${IR(refs.growth)}+${dg}`, v: growthDefault + dg, z: PCT, s: ST.yearF });
+    dms.forEach((dm, ci) => {
+      const isBase = dg === 0 && dm === 0;
+      put(V, r, 1 + ci, null, {
+        f: `${vRev}*(1+${IR(refs.growth)}+${dg})*${marginExpr}*(${IR(refs.evM)}+${dm})`,
+        v: inp.revenue * (1 + growthDefault + dg) * marginVal * (evMultDefault + dm),
+        z: NUMFMT,
+        s: isBase ? ST.calcBold : ST.calc,
+      });
+    });
+    r++;
+  });
+  put(V, r, 0, "EBITDA in each cell is next year revenue at that growth times the current margin.", { s: ST.note });
   finish(V, "Valuation");
 
   const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });

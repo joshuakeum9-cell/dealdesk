@@ -210,6 +210,16 @@ h1, h2, h3 {
   color: var(--coral-soft); text-transform: uppercase;
 }
 
+/* Sample downloads strip on the dark band */
+.sample-strip {
+  margin-top: 32px; padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.sample-label { font-size: 14px; color: rgba(255, 255, 255, 0.75); margin-right: 8px; }
+.sample-btn { color: var(--on-dark); border-color: rgba(255, 255, 255, 0.5); text-decoration: none; display: inline-block; }
+.sample-btn:hover { background: rgba(255, 255, 255, 0.12); }
+
 .about-inner { max-width: 760px; }
 .about-text { font-size: 18px; line-height: 1.5; color: var(--body-muted); }
 

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>How DealDesk Works</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="index.html">
+        <span class="brand-mark">DD</span>
+        <span class="brand-name">DealDesk</span>
+      </a>
+      <nav class="nav-links">
+        <a href="index.html">Home</a>
+        <a href="how-it-works.html">How it works</a>
+        <a href="https://github.com/joshuakeum9-cell/dealdesk">GitHub</a>
+      </nav>
+      <a class="btn btn-primary btn-sm" href="index.html#" onclick="location.href='index.html'; return false;">Start a deal</a>
+    </div>
+  </header>
+
+  <main class="view active">
+    <section class="section">
+      <div class="section-inner about-inner">
+        <p class="eyebrow">How it works</p>
+        <h2>No AI. A rules engine that encodes how consulting deliverables are built.</h2>
+        <p class="about-text">DealDesk is structured around the four tasks of the PwC management
+          consulting simulation. Each task has a known format and a known grading standard, so each
+          one can be systematized. Everything below runs in your browser as plain JavaScript:
+          nothing is uploaded, nothing is paid for, and every sentence in every document comes from
+          a rule you can read in the source code.</p>
+      </div>
+    </section>
+
+    <section class="section section-alt">
+      <div class="section-inner">
+        <p class="eyebrow">The four tasks</p>
+        <h2>What the engine does for each deliverable</h2>
+        <div class="deliv-grid">
+          <div class="deliv-card">
+            <h3>Task 1: Business Summary</h3>
+            <p>The simulation asks for a short, skimmable brief: overview, financials, people,
+              products, news. DealDesk computes growth and margins from your numbers, writes the
+              findings from threshold rules (a 9% growth rate is called healthy because the rule
+              says over 8% is healthy), and follows the template section order exactly. For public
+              companies the lookup fills the description, leadership, and reported revenue from
+              Wikipedia and Wikidata.</p>
+          </div>
+          <div class="deliv-card">
+            <h3>Task 2: Interview Guide</h3>
+            <p>The simulation asks for 15 to 20 numbered questions in ordered topics with space for
+              answers. DealDesk keeps a bank of questions per practice and per deal type. Your
+              situation answers add targeted questions: say the company has excess capacity and the
+              guide gains a stranded cost question; say one customer dominates and it asks about
+              retention first.</p>
+          </div>
+          <div class="deliv-card">
+            <h3>Task 3: Synergy Presentation</h3>
+            <p>The simulation asks for a three slide loop: a summary slide that signposts, then two
+              slides that expand each category in the same order. DealDesk keeps a library of
+              opportunity hypotheses, scores each against your situation, and puts the top three
+              per category on the slides, with the company's own revenue and margin charted from
+              your numbers. Font sizes are computed so text always fits its box.</p>
+          </div>
+          <div class="deliv-card">
+            <h3>Task 4: Excel Model and Email</h3>
+            <p>The simulation asks for a simple model with labeled inputs, scenarios, and an email
+              that opens with the answer. DealDesk builds four linked sheets where yellow cells are
+              the only inputs: change the growth rate or the valuation multiple and the
+              projections, scenarios, and sensitivity grid all recalculate. The email states a
+              recommendation that follows the numbers: proceed, proceed with caution, or run a
+              diagnostic first.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-inner about-inner">
+        <p class="eyebrow">The honest part</p>
+        <h2>What it can and cannot do</h2>
+        <p class="about-text">The engine selects and computes; it does not reason. Two similar
+          situations get similar hypotheses, because the hypotheses come from a written library,
+          not from reading your memo. That is a deliberate trade: the output is deterministic,
+          free, private, and always in the correct format. The judgment stays with the consultant,
+          which is where it belongs.</p>
+        <p class="about-text">Reliability: every release runs an automated regression of several
+          hundred generated engagements, including real public company financials, hostile inputs,
+          and a geometry check that verifies no slide text overflows its box.</p>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        <span>DealDesk. A portfolio project by Joshua Keum.</span>
+        <span class="footer-muted"><a href="https://github.com/joshuakeum9-cell/dealdesk" style="color:inherit">Source on GitHub</a></span>
+      </div>
+    </footer>
+  </main>
+
+</body>
+</html>
