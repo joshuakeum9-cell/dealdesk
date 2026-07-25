@@ -773,6 +773,87 @@ function verdictOf(m) {
   return "proceed";
 }
 
+/* ---------- Shared deliverable content ----------
+   The document writers and the on screen previews both consume these,
+   so a preview can never drift from the file it is previewing. */
+
+function sourceLineFor(m) {
+  return m.source === "sample"
+    ? "Source: Illustrative sample financials; DealDesk analysis"
+    : m.source === "lookup"
+    ? "Source: Reported figures via Wikidata; DealDesk analysis"
+    : "Source: Management financials; DealDesk analysis";
+}
+
+// Historical table plus one projection column, in $M or $B
+function buildFinancialsTable(m) {
+  const g = Math.max(-0.5, Math.min(0.5, m.revenueCAGR));
+  const last = m.series.revenue.length - 1;
+  const div = m.revenueLatest >= 10000 ? 1000 : 1;
+  const unit = div === 1000 ? "$B" : "$M";
+  const proj = (series) => series[last] * (1 + g);
+  const fN = (v) => fmtNum(v / div);
+
+  const header = [unit, ...m.years.map((y) => fyLabel(y)), fyLabel(m.lastYear + 1, "F")];
+  const rows = [["Revenue", ...m.series.revenue.map(fN), fN(proj(m.series.revenue))]];
+  rows.push([
+    "Revenue growth (%)",
+    "n/a",
+    ...m.series.revenue.slice(1).map((v, i) => fmtPct(v / m.series.revenue[i] - 1)),
+    fmtPct(g),
+  ]);
+  if (m.series.cogs) rows.push(["COGS", ...m.series.cogs.map((v) => fN(-v)), fN(-proj(m.series.cogs))]);
+  if (m.series.opex) rows.push(["SG&A / Opex", ...m.series.opex.map((v) => fN(-v)), fN(-proj(m.series.opex))]);
+  const totalRow = m.ebitdaSeries ? ["EBITDA", ...m.ebitdaSeries.map(fN), fN(proj(m.ebitdaSeries))] : null;
+  const marginRow = m.ebitdaSeries
+    ? [
+        "EBITDA margin (%)",
+        ...m.ebitdaSeries.map((e, i) => fmtPct(e / m.series.revenue[i])),
+        fmtPct(proj(m.ebitdaSeries) / proj(m.series.revenue)),
+      ]
+    : null;
+  return { header, rows, totalRow, marginRow, unit };
+}
+
+// Every string that appears on the presentation, in slide order
+function buildDeckContent(deal, m) {
+  const P = practiceOf(deal);
+  const groups = buildOpportunities(deal, m).groups;
+  const all = groups.flatMap((g, gi) => g.items.map((s) => ({ ...s, kind: g.label, gi })));
+  const score = { High: 3, Medium: 2, Low: 1 };
+  const ranked = all
+    .slice()
+    .sort((a, b) => score[b.impact] + score[b.ease] - (score[a.impact] + score[a.ease]));
+  const top = ranked[0];
+  const n = buildNarrative(deal, m);
+  const deckTitle = P.deckTitle.charAt(0).toUpperCase() + P.deckTitle.slice(1);
+
+  return {
+    groups,
+    all,
+    ranked,
+    srcLine: sourceLineFor(m),
+    cover: {
+      code: dealCode(deal),
+      title: deckTitle,
+      sub: `${deal.company} | ${deal.dealType} | ${todayLabel()}`,
+      note:
+        "Private and confidential. Draft for discussion purposes only." +
+        (m.source === "sample" ? " Prepared on illustrative sample financials." : ""),
+    },
+    summary: {
+      kicker: "Summary",
+      title: `${deal.company} presents ${groups[0].items.length} ${groups[0].label.toLowerCase()} and ${groups[1].items.length} ${groups[1].label.toLowerCase()}; ${top.name.toLowerCase()} offers the highest confidence value`,
+      takeaway: "The next two slides expand each category in the order shown here",
+      frame: n.dealFrame,
+    },
+    matrix: {
+      kicker: "Appendix: prioritization",
+      title: `Pursue the top ${Math.min(3, ranked.length)} opportunities first; hold the remainder for the roadmap`,
+    },
+  };
+}
+
 /* ---------- Email summary (BLUF: answer first, then support) ---------- */
 
 function buildEmail(deal, m) {

@@ -70,7 +70,9 @@ function setTheme(brand) {
     fillAccent: tint(accent, 0.88),
     onInk: luminance(ink) < 140 ? "FFFFFF" : "1A1A1A",
     onAccent: luminance(accent) < 140 ? "FFFFFF" : "1A1A1A",
-    branded: true,
+    // Fonts can be chosen without going branded, so a ghost draft can
+    // still use the firm's typography without a logo or client colors.
+    branded: brand.branded !== false,
   };
 }
 
@@ -503,37 +505,8 @@ function productsTable(deal) {
 }
 
 function financialsTable(m) {
-  // PwC template: historical years plus a projection column, with an
-  // EBITDA margin % row. The projection follows the ACTUAL trend, even
-  // when it is negative; growing a declining business would contradict
-  // the narrative. Large companies switch to $B units.
-  const g = Math.max(-0.5, Math.min(0.5, m.revenueCAGR));
-  const last = m.series.revenue.length - 1;
-  const div = m.revenueLatest >= 10000 ? 1000 : 1;
-  const unit = div === 1000 ? "$B" : "$M";
-  const proj = (series) => series[last] * (1 + g);
-  const fN = (v) => fmtNum(v / div);
-
-  const header = [unit, ...m.years.map((y) => fyLabel(y)), fyLabel(m.lastYear + 1, "F")];
-  const rows = [["Revenue", ...m.series.revenue.map(fN), fN(proj(m.series.revenue))]];
-  rows.push([
-    "Revenue growth (%)",
-    "n/a",
-    ...m.series.revenue.slice(1).map((v, i) => fmtPct(v / m.series.revenue[i] - 1)),
-    fmtPct(g),
-  ]);
-  if (m.series.cogs) rows.push(["COGS", ...m.series.cogs.map((v) => fN(-v)), fN(-proj(m.series.cogs))]);
-  if (m.series.opex) rows.push(["SG&A / Opex", ...m.series.opex.map((v) => fN(-v)), fN(-proj(m.series.opex))]);
-  const totalRow = m.ebitdaSeries
-    ? ["EBITDA", ...m.ebitdaSeries.map(fN), fN(proj(m.ebitdaSeries))]
-    : null;
-  const marginRow = m.ebitdaSeries
-    ? [
-        "EBITDA margin (%)",
-        ...m.ebitdaSeries.map((e, i) => fmtPct(e / m.series.revenue[i])),
-        fmtPct(proj(m.ebitdaSeries) / proj(m.series.revenue)),
-      ]
-    : null;
+  // Rows come from the engine so the preview and the file agree.
+  const { header, rows, totalRow, marginRow } = buildFinancialsTable(m);
 
   const cell = (text, { headerRow, total, first } = {}) =>
     new docx.TableCell({
@@ -751,15 +724,9 @@ function addFurniture(slide, { kicker, title, source, takeaway }) {
 }
 
 async function generateSynergyPptx(deal, m) {
-  const P = practiceOf(deal);
-  const groups = buildOpportunities(deal, m).groups;
-  const all = groups.flatMap((g, gi) => g.items.map((s) => ({ ...s, kind: g.label, gi })));
+  const content = buildDeckContent(deal, m);
+  const { groups, all, srcLine } = content;
   const score = { High: 3, Medium: 2, Low: 1 };
-  const srcLine = m.source === "sample"
-    ? "Source: Illustrative sample financials; DealDesk analysis"
-    : m.source === "lookup"
-    ? "Source: Reported figures via Wikidata; DealDesk analysis"
-    : "Source: Management financials; DealDesk analysis";
 
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_16x9";
@@ -775,25 +742,24 @@ async function generateSynergyPptx(deal, m) {
   /* --- Title slide: full-bleed ink, white serif title --- */
   let s = pptx.addSlide();
   s.background = { color: THEME.ink };
-  s.addText(dealCode(deal), { x: 0.6, y: 2.0, w: 11, h: 0.4, fontFace: THEME.sans, fontSize: 13, bold: true, color: THEME.accent, charSpacing: 3 });
-  const tTitle = P.deckTitle.charAt(0).toUpperCase() + P.deckTitle.slice(1);
+  s.addText(content.cover.code, { x: 0.6, y: 2.0, w: 11, h: 0.4, fontFace: THEME.sans, fontSize: 13, bold: true, color: THEME.accent, charSpacing: 3 });
+  const tTitle = content.cover.title;
   s.addText(tTitle, { x: 0.6, y: 2.45, w: 12, h: 1.6, fontFace: THEME.serif, fontSize: fitSize(tTitle, 12, 1.6, 38), color: THEME.onInk });
-  const tSub = `${deal.company} | ${deal.dealType} | ${todayLabel()}`;
+  const tSub = content.cover.sub;
   s.addText(tSub, { x: 0.6, y: 4.1, w: 11, h: 0.4, fontFace: THEME.sans, fontSize: fitSize(tSub, 11, 0.4, 13), color: "B8C2CC" });
-  s.addText("Private and confidential. Draft for discussion purposes only." + (m.source === "sample" ? " Prepared on illustrative sample financials." : ""), {
+  s.addText(content.cover.note, {
     x: 0.6, y: 6.9, w: 11, h: 0.3, fontFace: THEME.sans, fontSize: 9, color: "8A97A3",
   });
 
   /* --- Slide 1: summary that signposts slides 2 and 3 (PwC 3-slide loop) --- */
   s = pptx.addSlide({ masterName: "CONTENT" });
-  const topSyn = [...all].sort((a, b) => score[b.impact] + score[b.ease] - (score[a.impact] + score[a.ease]))[0];
-  const n = buildNarrative(deal, m);
   addFurniture(s, {
-    kicker: "Summary",
-    title: `${deal.company} presents ${groups[0].items.length} ${groups[0].label.toLowerCase()} and ${groups[1].items.length} ${groups[1].label.toLowerCase()}; ${topSyn.name.toLowerCase()} offers the highest confidence value`,
+    kicker: content.summary.kicker,
+    title: content.summary.title,
     source: srcLine,
-    takeaway: "The next two slides expand each category in the order shown here",
+    takeaway: content.summary.takeaway,
   });
+  const n = { dealFrame: content.summary.frame };
   // Left column: framing plus the two category signposts
   s.addText(n.dealFrame, {
     x: MARGIN, y: 1.42, w: 6.15, h: 0.95,
@@ -853,10 +819,10 @@ async function generateSynergyPptx(deal, m) {
 
   /* --- Achievability 2x2 matrix --- */
   s = pptx.addSlide({ masterName: "CONTENT" });
-  const ranked = [...all].sort((a, b) => score[b.impact] + score[b.ease] - (score[a.impact] + score[a.ease]));
+  const ranked = content.ranked;
   addFurniture(s, {
-    kicker: "Appendix: prioritization",
-    title: `Pursue the top ${Math.min(3, ranked.length)} opportunities first; hold the remainder for the roadmap`,
+    kicker: content.matrix.kicker,
+    title: content.matrix.title,
     source: srcLine,
   });
   const px = 1.1, py = 1.55, pw = 7.0, ph = 4.5;
@@ -901,12 +867,13 @@ async function generateSynergyPptx(deal, m) {
    4. Excel model (.xlsx) + email (.docx)
    ================================================================ */
 
-function generateModelXlsx(deal, m) {
+function buildModelWorkbook(deal, m) {
   // Four linked sheets, banker style: yellow input cells drive every
   // other number. Inputs (assumptions and multiples), Model
   // (historicals plus a five year projection), Synergies (three
   // scenarios), Valuation (multiple driven, with value creation).
   const wb = XLSX.utils.book_new();
+  const specs = [];
   const term = practiceTerm(deal);
   const sc = computeScenarios(deal, m);
   const inp = sc.inputs;
@@ -931,8 +898,16 @@ function generateModelXlsx(deal, m) {
     yearF: { font: { name: "Arial", sz: 10, bold: true, color: { rgb: THEME.ink } }, fill: { patternType: "solid", fgColor: { rgb: THEME.fillAccent } }, alignment: { horizontal: "center" } },
   };
 
+  // Roles are recorded alongside the cells so the on screen preview can
+  // paint the same yellow inputs and header bands as the workbook.
+  const ROLE_OF = new Map([
+    [ST.title, "title"], [ST.note, "note"], [ST.section, "section"],
+    [ST.label, "label"], [ST.input, "input"], [ST.calc, "calc"],
+    [ST.calcBold, "calcBold"], [ST.labelBold, "labelBold"],
+    [ST.pctRow, "pctRow"], [ST.yearA, "yearA"], [ST.yearF, "yearF"],
+  ]);
   function newSheet(widths) {
-    return { ws: { "!cols": widths.map((wch) => ({ wch })) }, maxR: 0, maxC: 0 };
+    return { ws: { "!cols": widths.map((wch) => ({ wch })) }, cells: [], maxR: 0, maxC: 0 };
   }
   function put(sh, r, c, v, opts = {}) {
     const addr = XLSX.utils.encode_cell({ r, c });
@@ -943,6 +918,7 @@ function generateModelXlsx(deal, m) {
     if (opts.z) cell.z = opts.z;
     if (opts.s) cell.s = opts.s;
     sh.ws[addr] = cell;
+    sh.cells.push({ r, c, v: cell.v, f: cell.f, z: cell.z, role: ROLE_OF.get(opts.s) || "plain" });
     sh.maxR = Math.max(sh.maxR, r);
     sh.maxC = Math.max(sh.maxC, c);
     return addr;
@@ -953,6 +929,7 @@ function generateModelXlsx(deal, m) {
   function finish(sh, name) {
     sh.ws["!ref"] = "A1:" + XLSX.utils.encode_cell({ r: sh.maxR, c: sh.maxC });
     XLSX.utils.book_append_sheet(wb, sh.ws, name);
+    specs.push({ name, cols: (sh.ws["!cols"] || []).map((c) => c.wch), cells: sh.cells, maxR: sh.maxR, maxC: sh.maxC });
   }
 
   /* ---------------- Sheet 1: Inputs ---------------- */
@@ -1182,8 +1159,18 @@ function generateModelXlsx(deal, m) {
   put(V, r, 0, "EBITDA in each cell is next year revenue at that growth times the current margin.", { s: ST.note });
   finish(V, "Valuation");
 
+  return { wb, specs };
+}
+
+function generateModelXlsx(deal, m) {
+  const { wb } = buildModelWorkbook(deal, m);
   const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
   return new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+}
+
+// Cell level description of the workbook, for the on screen preview
+function modelSpecs(deal, m) {
+  return buildModelWorkbook(deal, m).specs;
 }
 
 async function generateEmailDocx(deal, m) {

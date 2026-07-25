@@ -61,25 +61,126 @@ async function runLookup() {
   await state.lookupPromise;
 }
 
+/* ---------- Typography ----------
+   Ten pairings that exist on stock Windows and Mac installs, so a
+   document opens the way it was designed on the recipient's machine. */
 const FONT_PAIRS = {
-  georgia: { serif: "Georgia", sans: "Arial" },
-  garamond: { serif: "Garamond", sans: "Calibri" },
-  times: { serif: "Times New Roman", sans: "Segoe UI" },
-  modern: { serif: "Arial", sans: "Arial" },
+  georgia: { serif: "Georgia", sans: "Arial", label: "Georgia + Arial" },
+  garamond: { serif: "Garamond", sans: "Calibri", label: "Garamond + Calibri" },
+  cambria: { serif: "Cambria", sans: "Calibri", label: "Cambria + Calibri" },
+  times: { serif: "Times New Roman", sans: "Arial", label: "Times New Roman + Arial" },
+  bookman: { serif: "Book Antiqua", sans: "Tahoma", label: "Book Antiqua + Tahoma" },
+  constantia: { serif: "Constantia", sans: "Corbel", label: "Constantia + Corbel" },
+  palatino: { serif: "Palatino Linotype", sans: "Verdana", label: "Palatino + Verdana" },
+  century: { serif: "Century Schoolbook", sans: "Franklin Gothic Book", label: "Century Schoolbook + Franklin Gothic" },
+  inverted: { serif: "Segoe UI Semibold", sans: "Georgia", label: "Segoe UI headings + Georgia body" },
+  modern: { serif: "Arial", sans: "Arial", label: "Arial only" },
 };
 
-// Build the theme for the selected output mode: null = ghost draft
+const HEADING_FONTS = [
+  "Georgia", "Garamond", "Cambria", "Times New Roman", "Book Antiqua",
+  "Constantia", "Palatino Linotype", "Century Schoolbook", "Segoe UI Semibold",
+  "Trebuchet MS", "Arial", "Verdana",
+];
+const BODY_FONTS = [
+  "Arial", "Calibri", "Segoe UI", "Tahoma", "Corbel", "Verdana",
+  "Franklin Gothic Book", "Trebuchet MS", "Georgia", "Times New Roman",
+];
+
+function chosenFonts() {
+  const key = document.getElementById("f-fonts").value;
+  if (key === "custom") {
+    return {
+      serif: document.getElementById("f-font-head").value || "Georgia",
+      sans: document.getElementById("f-font-body").value || "Arial",
+    };
+  }
+  return FONT_PAIRS[key] || FONT_PAIRS.georgia;
+}
+
+// Build the theme for the selected output mode. Ghost drafts keep the
+// neutral palette but still honor the chosen typography.
 function currentTheme() {
   const mode = document.querySelector('input[name="output-mode"]:checked');
-  if (!mode || mode.value === "ghost") return null;
-  const fonts = FONT_PAIRS[document.getElementById("f-fonts").value] || FONT_PAIRS.georgia;
+  const fonts = chosenFonts();
+  if (!mode || mode.value === "ghost") {
+    return { serif: fonts.serif, sans: fonts.sans, branded: false };
+  }
   return {
     ink: document.getElementById("f-brand-primary").value,
     accent: document.getElementById("f-brand-accent").value,
     serif: fonts.serif,
     sans: fonts.sans,
     logo: state.brandLogo,
+    branded: true,
   };
+}
+
+/* ---------- Color readouts: hex, rgb, and hsl together ---------- */
+
+function hexToRgb(hex) {
+  const n = parseInt(String(hex).replace("#", ""), 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+function rgbToHsl({ r, g, b }) {
+  const R = r / 255, G = g / 255, B = b / 255;
+  const mx = Math.max(R, G, B), mn = Math.min(R, G, B), d = mx - mn;
+  const l = (mx + mn) / 2;
+  let h = 0, s = 0;
+  if (d) {
+    s = d / (1 - Math.abs(2 * l - 1));
+    h = mx === R ? ((G - B) / d) % 6 : mx === G ? (B - R) / d + 2 : (R - G) / d + 4;
+    h = Math.round(h * 60);
+    if (h < 0) h += 360;
+  }
+  return { h, s: Math.round(s * 100), l: Math.round(l * 100) };
+}
+
+function updateColorReadout(inputId, boxId) {
+  const hex = document.getElementById(inputId).value.toUpperCase();
+  const rgb = hexToRgb(hex);
+  const hsl = rgbToHsl(rgb);
+  document.getElementById(boxId).innerHTML =
+    `<span class="cr-chip" style="background:${hex}"></span>` +
+    `<code>HEX ${hex}</code>` +
+    `<code>RGB ${rgb.r}, ${rgb.g}, ${rgb.b}</code>` +
+    `<code>HSL ${hsl.h}, ${hsl.s}%, ${hsl.l}%</code>`;
+}
+
+function refreshBrandingUI() {
+  updateColorReadout("f-brand-primary", "ro-primary");
+  updateColorReadout("f-brand-accent", "ro-accent");
+  const custom = document.getElementById("f-fonts").value === "custom";
+  document.getElementById("custom-fonts").hidden = !custom;
+  const f = chosenFonts();
+  const sample = document.getElementById("font-sample");
+  if (sample) {
+    sample.innerHTML =
+      `<span style="font-family:'${f.serif}',Georgia,serif;font-size:19px">${f.serif}: heading sample</span>` +
+      `<span style="font-family:'${f.sans}',Arial,sans-serif;font-size:14px">${f.sans}: body text sample, the quick brown fox jumps over the lazy dog.</span>`;
+  }
+}
+
+function initBrandingUI() {
+  const head = document.getElementById("f-font-head");
+  const body = document.getElementById("f-font-body");
+  if (head && !head.options.length) {
+    head.innerHTML = HEADING_FONTS.map((f) => `<option>${f}</option>`).join("");
+    body.innerHTML = BODY_FONTS.map((f) => `<option>${f}</option>`).join("");
+  }
+  const pairSel = document.getElementById("f-fonts");
+  if (pairSel && !pairSel.dataset.built) {
+    pairSel.innerHTML =
+      Object.entries(FONT_PAIRS).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join("") +
+      `<option value="custom">Mix and match your own</option>`;
+    pairSel.dataset.built = "1";
+  }
+  ["f-brand-primary", "f-brand-accent", "f-fonts", "f-font-head", "f-font-body"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("input", refreshBrandingUI);
+  });
+  refreshBrandingUI();
 }
 
 /* ---------- View switching ---------- */
@@ -494,82 +595,95 @@ async function downloadOutput(kind, btn) {
 /* ---------- Preview modal ---------- */
 
 function previewOutput(key) {
+  setTheme(currentTheme());
   const deal = state.deal || getDeal();
   const m = state.metrics || computeMetrics(state.financials || SAMPLE_FINANCIALS);
   const P = practiceOf(deal);
-  const n = buildNarrative(deal, m);
   const email = buildEmail(deal, m);
   const srcNote =
     m.source === "sample"
-      ? "Built from the sample company financials. Upload your own Excel file for tailored output."
-      : "Built from your uploaded financials, entirely in your browser.";
+      ? "Built from the sample company financials. Upload your own numbers for tailored output."
+      : m.source === "lookup"
+      ? "Built from reported figures found by the company lookup."
+      : "Built from your financials, entirely in your browser.";
 
-  const PREVIEWS = {
-    summary: {
-      title: "Business Summary (preview)",
-      body: `
-        <div class="preview-note">${srcNote}</div>
-        <h4>Situation overview</h4><ul><li>${n.dealFrame}</li></ul>
-        <h4>Financial profile</h4>
-        <ul><li>${n.growthSentence}</li><li>${n.marginSentence}</li></ul>
-        <h4>Also included</h4>
-        <ul><li>Historical financials table (${m.firstYear} to ${m.lastYear})</li>
-        <li>Key risks and open questions tailored to a ${deal.dealType.toLowerCase()}</li>
-        <li>Recommended next steps</li></ul>`,
+  const VISUAL = {
+    summary: () => previewSummaryHTML(deal, m),
+    guide: () => previewGuideHTML(deal, m),
+    synergy: () => previewDeckHTML(deal, m),
+    model: () =>
+      previewModelHTML(deal, m) +
+      '<div class="pv-divider">Executive email summary, sent with the model</div>' +
+      previewEmailHTML(deal, m),
+  };
+
+  const OVERVIEW = {
+    summary: () => {
+      const n = buildNarrative(deal, m);
+      return `<h4>Situation overview</h4><ul><li>${n.dealFrame}</li></ul>
+        <h4>Financial profile</h4><ul><li>${n.growthSentence}</li><li>${n.marginSentence}</li></ul>
+        <h4>Also included</h4><ul>
+        <li>Historical financials table with growth and margin rows (${m.firstYear} to ${m.lastYear})</li>
+        <li>Key people, key products, and recent news sections</li>
+        <li>Risks and open questions prioritized for this situation</li></ul>`;
     },
-    guide: {
-      title: `${guideTitleOf(deal)} (preview)`,
-      body:
-        `<div class="preview-note">${srcNote}</div>` +
-        buildInterviewQuestions(deal)
+    guide: () =>
+      buildInterviewQuestions(deal)
+        .map(
+          (s) =>
+            `<h4>${s.section}</h4><ul>` +
+            s.questions.slice(0, 2).map((q) => `<li>${q}</li>`).join("") +
+            `</ul>`
+        )
+        .join(""),
+    synergy: () => {
+      const groups = buildOpportunities(deal, m).groups;
+      return (
+        groups
           .map(
-            (s) =>
-              `<h4>${s.section}</h4><ul>` +
-              s.questions.slice(0, 2).map((q) => `<li>${q}</li>`).join("") +
+            (g) =>
+              `<h4>${g.label}</h4><ul>` +
+              g.items.map((s) => `<li><strong>${s.name}</strong>: ${s.rationale}</li>`).join("") +
               `</ul>`
           )
-          .join(""),
+          .join("") + `<h4>Plus</h4><ul><li>Cover, summary signpost slide, and an achievability matrix appendix</li></ul>`
+      );
     },
-    synergy: {
-      title: `${P.deckShort} (preview)`,
-      body: (() => {
-        const groups = buildOpportunities(deal, m).groups;
-        return (
-          `<div class="preview-note">${srcNote}</div>` +
-          groups
-            .map(
-              (g) =>
-                `<h4>${g.label}</h4><ul>` +
-                g.items.map((s) => `<li><strong>${s.name}</strong>: ${s.rationale}</li>`).join("") +
-                `</ul>`
-            )
-            .join("") +
-          `<h4>Plus</h4><ul><li>Executive summary and achievability matrix slides</li></ul>`
-        );
-      })(),
-    },
-    model: {
-      title: "Excel Model + Email Summary (preview)",
-      body: (() => {
-        const sc = computeScenarios(deal, m);
-        const term = practiceTerm(deal);
-        return `
-        <div class="preview-note">${srcNote}</div>
-        <h4>Workbook structure</h4>
-        <ul><li><strong>Inputs</strong>: client data plus every ${term} percentage in a labeled, editable cell</li>
-        <li><strong>${term.charAt(0).toUpperCase() + term.slice(1)} model</strong>: conservative ${fmtM(sc.conservative.total)}, midpoint ${fmtM(sc.midpoint.total)}, aggressive ${fmtM(sc.aggressive.total)} annual EBIT impact, all formulas, no hardcoding</li>
-        <li><strong>Historicals</strong>: the parsed financials (${m.firstYear} to ${m.lastYear})</li></ul>
-        <h4>Email summary (excerpt)</h4>
-        <ul><li><strong>Subject:</strong> ${email.subject}</li>
-        <li>${email.answer}</li></ul>`;
-      })(),
+    model: () => {
+      const sc = computeScenarios(deal, m);
+      const term = practiceTerm(deal);
+      return `<h4>Workbook structure</h4>
+        <ul><li><strong>Inputs</strong>: client data, projection assumptions, ${term} percentages, and valuation multiples, all editable</li>
+        <li><strong>Model</strong>: historicals plus a five year projection</li>
+        <li><strong>${term.charAt(0).toUpperCase() + term.slice(1)}</strong>: conservative ${fmtM(sc.conservative.total)}, midpoint ${fmtM(sc.midpoint.total)}, aggressive ${fmtM(sc.aggressive.total)} annual impact</li>
+        <li><strong>Valuation</strong>: enterprise value, value creation, and a sensitivity grid</li></ul>
+        <h4>Email summary</h4><ul><li><strong>Subject:</strong> ${email.subject}</li><li>${email.answer}</li></ul>`;
     },
   };
 
-  const p = PREVIEWS[key];
-  document.getElementById("modal-title").textContent = p.title;
-  document.getElementById("modal-body").innerHTML = p.body;
+  const titles = {
+    summary: "Business Summary",
+    guide: guideTitleOf(deal),
+    synergy: P.deckShort,
+    model: "Excel Model + Email Summary",
+  };
+
+  document.getElementById("modal-title").textContent = titles[key];
+  document.getElementById("modal-body").innerHTML =
+    `<div class="pv-switch">
+       <button class="pv-swbtn active" data-pane="visual" onclick="pvPane('visual')">Preview</button>
+       <button class="pv-swbtn" data-pane="overview" onclick="pvPane('overview')">Overview</button>
+       <span class="pv-note">${srcNote}</span>
+     </div>
+     <div id="pv-pane-visual">${VISUAL[key]()}</div>
+     <div id="pv-pane-overview" hidden><div class="pv-overview">${OVERVIEW[key]()}</div></div>`;
   document.getElementById("modal").classList.add("open");
+}
+
+function pvPane(which) {
+  document.getElementById("pv-pane-visual").hidden = which !== "visual";
+  document.getElementById("pv-pane-overview").hidden = which !== "overview";
+  document.querySelectorAll(".pv-swbtn").forEach((b) => b.classList.toggle("active", b.dataset.pane === which));
 }
 
 function closeModal() {
@@ -581,4 +695,5 @@ document.addEventListener("keydown", (e) => {
 });
 
 initPickers();
+initBrandingUI();
 refreshGoalOptions();

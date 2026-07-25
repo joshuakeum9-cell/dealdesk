@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/styles.css?v=2026072402" />
+  <link rel="stylesheet" href="css/styles.css?v=2026072403" />
 </head>
 <body>
 
@@ -302,25 +302,32 @@
           <fieldset class="brand-fieldset">
             <legend>Client branding (optional)</legend>
             <p class="brand-hint">Deliverables default to a neutral "ghost draft" style. Set the client's identity here to enable client branded finals; the structure and logic never change.</p>
-            <div class="form-row form-row-3">
+            <div class="form-row">
               <div class="form-field">
                 <label for="f-brand-primary">Primary color</label>
                 <input type="color" id="f-brand-primary" value="#0A1F2E" />
+                <div class="color-readout" id="ro-primary"></div>
               </div>
               <div class="form-field">
                 <label for="f-brand-accent">Accent color</label>
                 <input type="color" id="f-brand-accent" value="#1F4CFF" />
-              </div>
-              <div class="form-field">
-                <label for="f-fonts">Font pairing</label>
-                <select id="f-fonts">
-                  <option value="georgia" selected>Georgia + Arial (firm standard)</option>
-                  <option value="garamond">Garamond + Calibri</option>
-                  <option value="times">Times New Roman + Segoe UI</option>
-                  <option value="modern">Arial only (modern)</option>
-                </select>
+                <div class="color-readout" id="ro-accent"></div>
               </div>
             </div>
+            <div class="form-row">
+              <div class="form-field">
+                <label for="f-fonts">Font pairing</label>
+                <select id="f-fonts"></select>
+              </div>
+              <div class="form-field" id="custom-fonts" hidden>
+                <label for="f-font-head">Mix and match: headings, then body</label>
+                <div class="font-pair-row">
+                  <select id="f-font-head"></select>
+                  <select id="f-font-body"></select>
+                </div>
+              </div>
+            </div>
+            <p class="font-sample" id="font-sample"></p>
             <div class="form-field">
               <label>Client logo</label>
               <button type="button" class="btn btn-sm btn-ghost" onclick="openPicker('logo')">Upload logo (.png or .jpg)</button>
@@ -551,9 +558,10 @@
   <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-  <script src="js/lookup.js?v=2026072402"></script>
-  <script src="js/engine.js?v=2026072402"></script>
-  <script src="js/generators.js?v=2026072402"></script>
-  <script src="js/app.js?v=2026072402"></script>
+  <script src="js/lookup.js?v=2026072403"></script>
+  <script src="js/engine.js?v=2026072403"></script>
+  <script src="js/generators.js?v=2026072403"></script>
+  <script src="js/preview.js?v=2026072403"></script>
+  <script src="js/app.js?v=2026072403"></script>
 </body>
 </html>
