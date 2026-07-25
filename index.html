@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/styles.css?v=2026072404" />
+  <link rel="stylesheet" href="css/styles.css?v=2026072405" />
 </head>
 <body>
 
@@ -42,6 +42,14 @@
           deliverables: a business summary, a management interview guide,
           an opportunity presentation, and a working Excel model with an executive email summary.
           Every output is tailored to your practice: strategy, operations, or M&amp;A.</p>
+        <div class="hero-try">
+          <label class="hero-try-label" for="hero-company">Try it now. Type any public company:</label>
+          <div class="hero-try-row">
+            <input id="hero-company" type="text" placeholder="Intel" onkeydown="if(event.key==='Enter'){heroLookup();return false}" />
+            <button class="btn btn-primary" onclick="heroLookup()">Look up</button>
+          </div>
+          <div class="hero-result" id="hero-result">Free, instant, and private: the numbers come from public filings data and the documents are written in your browser.</div>
+        </div>
         <div class="hero-actions">
           <button class="btn btn-primary btn-lg" onclick="startWorkflow()">Generate a deal package</button>
           <button class="btn btn-ghost btn-lg" onclick="goHome('how')">See how it works</button>
@@ -85,7 +93,7 @@
           <div class="step-card">
             <span class="step-num">02</span>
             <h3>Upload the inputs</h3>
-            <p>Drop in financial statements, org charts, or diligence notes. Excel, PDF, and Word files are all fair game.</p>
+            <p>Look up a public company by name, upload a financial statement, or type the numbers in. Anything else the documents need, you can add in a sentence.</p>
           </div>
           <div class="step-card">
             <span class="step-num">03</span>
@@ -200,7 +208,8 @@
                 <input id="f-company" type="text" placeholder="e.g., Meridian Components Inc." />
                 <button type="button" class="btn btn-sm btn-ghost" onclick="runLookup()">Look up</button>
               </div>
-              <span class="lookup-status" id="lookup-status">For public companies: pulls the description, leadership, and reported revenue from Wikipedia and Wikidata. Free and keyless.</span>
+              <p class="field-msg" id="company-error" hidden>Enter the company name. Every document is written about it, so it cannot be left blank.</p>
+              <span class="lookup-status" id="lookup-status">For public companies, this pulls the description, leadership, and reported revenue from public data. Free, and no account needed.</span>
             </div>
             <div class="form-field">
               <label for="f-industry">Industry</label>
@@ -223,117 +232,86 @@
             <textarea id="f-context" rows="4" placeholder="What is the client trying to accomplish? e.g., The client is evaluating the acquisition of this target to expand into the Midwest market and expects meaningful procurement synergies."></textarea>
           </div>
 
-          <fieldset class="brand-fieldset">
-            <legend>Situation assessment</legend>
-            <p class="brand-hint">Answer what you know; every answer sharpens the findings, interview questions, and opportunity ranking. Skip anything you are unsure about.</p>
-            <div class="form-row-3">
-              <div class="form-field">
-                <label for="s-goal">Primary engagement goal</label>
-                <select id="s-goal"><option value="">Not specified</option></select>
+          <details class="opt-panel" id="situation-panel">
+            <summary><span class="opt-title">Add detail to sharpen the output</span><span class="opt-sub">Optional. Answer what you know; each answer changes which findings, questions, and recommendations appear.</span></summary>
+            <div class="opt-body">
+              <div class="form-row-3">
+                <div class="form-field">
+                  <label for="s-goal">What is this work meant to decide?</label>
+                  <select id="s-goal"><option value="">Not specified</option></select>
+                </div>
+                <div class="form-field">
+                  <label for="s-margin">Is the business getting more or less profitable?</label>
+                  <select id="s-margin">
+                    <option value="">Not sure</option>
+                    <option>Improving</option>
+                    <option>Stable</option>
+                    <option>Declining</option>
+                  </select>
+                  <span class="field-help">Profit as a share of sales, over the last few years.</span>
+                </div>
+                <div class="form-field">
+                  <label for="s-driver">What is growing the sales?</label>
+                  <select id="s-driver">
+                    <option value="">Not sure</option>
+                    <option value="Volume">Selling more units</option>
+                    <option value="Price">Charging more per unit</option>
+                    <option value="Both">Both</option>
+                    <option value="Declining">Sales are shrinking</option>
+                  </select>
+                </div>
               </div>
-              <div class="form-field">
-                <label for="s-margin">Margin trend</label>
-                <select id="s-margin">
-                  <option value="">Not sure</option>
-                  <option>Improving</option>
-                  <option>Stable</option>
-                  <option>Declining</option>
-                </select>
+              <div class="form-row-3">
+                <div class="form-field">
+                  <label for="s-concentration">Do a few customers drive most of the revenue?</label>
+                  <select id="s-concentration">
+                    <option value="">Not sure</option>
+                    <option value="Yes">Yes, losing one would hurt badly</option>
+                    <option value="No">No, revenue is spread widely</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label for="s-capacity">Can the business handle more work today?</label>
+                  <select id="s-capacity">
+                    <option value="">Not sure</option>
+                    <option value="Tight">No, it is already at its limit</option>
+                    <option value="Balanced">About right</option>
+                    <option value="Excess">Yes, plenty of unused capacity</option>
+                  </select>
+                  <span class="field-help">Factories, fleets, offices, or staff sitting idle.</span>
+                </div>
+                <div class="form-field">
+                  <label for="s-costprog">Is a cost cutting program already running?</label>
+                  <select id="s-costprog">
+                    <option value="">Not sure</option>
+                    <option>Yes</option>
+                    <option>No</option>
+                  </select>
+                </div>
               </div>
-              <div class="form-field">
-                <label for="s-driver">What is driving revenue?</label>
-                <select id="s-driver">
-                  <option value="">Not sure</option>
-                  <option value="Volume">Volume growth</option>
-                  <option value="Price">Price and mix</option>
-                  <option value="Both">Both volume and price</option>
-                  <option value="Declining">Demand is softening</option>
-                </select>
-              </div>
-            </div>
-            <div class="form-row-3">
-              <div class="form-field">
-                <label for="s-concentration">Customer concentration?</label>
-                <select id="s-concentration">
-                  <option value="">Not sure</option>
-                  <option value="Yes">Yes, top customers matter a lot</option>
-                  <option value="No">No, revenue is diversified</option>
-                </select>
-              </div>
-              <div class="form-field">
-                <label for="s-capacity">Capacity situation</label>
-                <select id="s-capacity">
-                  <option value="">Not sure</option>
-                  <option value="Tight">Running tight</option>
-                  <option value="Balanced">Balanced</option>
-                  <option value="Excess">Excess capacity</option>
-                </select>
-              </div>
-              <div class="form-field">
-                <label for="s-costprog">Cost program underway?</label>
-                <select id="s-costprog">
-                  <option value="">Not sure</option>
-                  <option>Yes</option>
-                  <option>No</option>
-                </select>
-              </div>
-            </div>
-            <div class="form-row">
-              <div class="form-field">
-                <label for="s-competition">Competitive pressure</label>
-                <select id="s-competition">
-                  <option value="">Not sure</option>
-                  <option>Intensifying</option>
-                  <option>Stable</option>
-                </select>
-              </div>
-              <div class="form-field">
-                <label for="s-urgency">Timeline</label>
-                <select id="s-urgency">
-                  <option value="">Not specified</option>
-                  <option value="Weeks">Decision needed in weeks</option>
-                  <option value="Months">Decision needed in months</option>
-                  <option value="Exploratory">Exploratory</option>
-                </select>
-              </div>
-            </div>
-          </fieldset>
-
-          <fieldset class="brand-fieldset">
-            <legend>Client branding (optional)</legend>
-            <p class="brand-hint">Deliverables default to a neutral "ghost draft" style. Set the client's identity here to enable client branded finals; the structure and logic never change.</p>
-            <div class="form-row">
-              <div class="form-field">
-                <label for="f-brand-primary">Primary color</label>
-                <input type="color" id="f-brand-primary" value="#0A1F2E" />
-                <div class="color-readout" id="ro-primary"></div>
-              </div>
-              <div class="form-field">
-                <label for="f-brand-accent">Accent color</label>
-                <input type="color" id="f-brand-accent" value="#1F4CFF" />
-                <div class="color-readout" id="ro-accent"></div>
-              </div>
-            </div>
-            <div class="form-row">
-              <div class="form-field">
-                <label for="f-fonts">Font pairing</label>
-                <select id="f-fonts"></select>
-              </div>
-              <div class="form-field" id="custom-fonts" hidden>
-                <label for="f-font-head">Mix and match: headings, then body</label>
-                <div class="font-pair-row">
-                  <select id="f-font-head"></select>
-                  <select id="f-font-body"></select>
+              <div class="form-row">
+                <div class="form-field">
+                  <label for="s-competition">Are competitors getting more aggressive?</label>
+                  <select id="s-competition">
+                    <option value="">Not sure</option>
+                    <option>Intensifying</option>
+                    <option>Stable</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label for="s-urgency">How soon is the decision needed?</label>
+                  <select id="s-urgency">
+                    <option value="">Not specified</option>
+                    <option value="Weeks">Within weeks</option>
+                    <option value="Months">Within months</option>
+                    <option value="Exploratory">No deadline, exploring</option>
+                  </select>
                 </div>
               </div>
             </div>
-            <p class="font-sample" id="font-sample"></p>
-            <div class="form-field">
-              <label>Client logo</label>
-              <button type="button" class="btn btn-sm btn-ghost" onclick="openPicker('logo')">Upload logo (.png or .jpg)</button>
-              <div class="upload-files" id="files-logo"></div>
-            </div>
-          </fieldset>
+          </details>
+
+          
           <div class="wf-actions">
             <span></span>
             <button class="btn btn-primary" onclick="nextStep(2)">Continue to uploads</button>
@@ -392,28 +370,16 @@
           </div>
         </fieldset>
 
-        <div class="upload-zones">
+        <div class="upload-zones single">
           <div class="upload-zone" id="zone-financials" onclick="openPicker('financials')">
             <div class="upload-icon">&#8593;</div>
-            <h3>Financial statements <span class="req">*</span></h3>
-            <p>Income statement, balance sheet, or trial balance</p>
-            <span class="upload-hint">.xlsx, .csv, .pdf</span>
+            <h3>Financial statements</h3>
+            <p>Revenue, and if you have them, COGS and operating expenses, by year</p>
+            <span class="upload-hint">.xlsx, .csv</span>
             <div class="upload-files" id="files-financials"></div>
           </div>
-          <div class="upload-zone" id="zone-org" onclick="openPicker('org')">
-            <div class="upload-icon">&#8593;</div>
-            <h3>Company background</h3>
-            <p>Org charts, CIMs, annual reports, press coverage</p>
-            <span class="upload-hint">.pdf, .docx, .pptx</span>
-            <div class="upload-files" id="files-org"></div>
-          </div>
-          <div class="upload-zone" id="zone-notes" onclick="openPicker('notes')">
-            <div class="upload-icon">&#8593;</div>
-            <h3>Diligence notes</h3>
-            <p>Prior interview notes, data room extracts, memos</p>
-            <span class="upload-hint">.docx, .pdf, .txt</span>
-            <div class="upload-files" id="files-notes"></div>
-          </div>
+        </div>
+        <p class="upload-note">This is the only file the site reads. Everything else about the company is typed or looked up below, so nothing you upload sits unused.</p>
         </div>
 
         <div class="wf-actions">
@@ -451,12 +417,50 @@
             <label class="check-row"><input type="checkbox" checked id="c-guide" /> <span>Divestiture interview guide</span></label>
             <label class="check-row"><input type="checkbox" checked id="c-synergy" /> <span>Qualitative synergy presentation</span></label>
             <label class="check-row"><input type="checkbox" checked id="c-model" /> <span>Excel model + email summary</span></label>
+            <p class="field-msg" id="select-error" hidden>Choose at least one deliverable to generate.</p>
 
             <h3 class="review-subhead">Output branding</h3>
+            
             <label class="check-row"><input type="radio" name="output-mode" value="ghost" checked /> <span><strong>Ghost draft</strong>: neutral firm style, DRAFT stamps</span></label>
             <label class="check-row"><input type="radio" name="output-mode" value="branded" /> <span><strong>Client branded final</strong>: client colors, fonts, and logo</span></label>
           </div>
         </div>
+
+        <div class="review-card review-branding"><fieldset class="brand-fieldset">
+            <legend>Client branding (optional)</legend>
+            <p class="brand-hint">Deliverables default to a neutral "ghost draft" style. Set the client's identity here to enable client branded finals; the structure and logic never change.</p>
+            <div class="form-row">
+              <div class="form-field">
+                <label for="f-brand-primary">Primary color</label>
+                <input type="color" id="f-brand-primary" value="#0A1F2E" />
+                <div class="color-readout" id="ro-primary"></div>
+              </div>
+              <div class="form-field">
+                <label for="f-brand-accent">Accent color</label>
+                <input type="color" id="f-brand-accent" value="#1F4CFF" />
+                <div class="color-readout" id="ro-accent"></div>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-field">
+                <label for="f-fonts">Font pairing</label>
+                <select id="f-fonts"></select>
+              </div>
+              <div class="form-field" id="custom-fonts" hidden>
+                <label for="f-font-head">Mix and match: headings, then body</label>
+                <div class="font-pair-row">
+                  <select id="f-font-head"></select>
+                  <select id="f-font-body"></select>
+                </div>
+              </div>
+            </div>
+            <p class="font-sample" id="font-sample"></p>
+            <div class="form-field">
+              <label>Client logo</label>
+              <button type="button" class="btn btn-sm btn-ghost" onclick="openPicker('logo')">Upload logo (.png or .jpg)</button>
+              <div class="upload-files" id="files-logo"></div>
+            </div>
+          </fieldset></div>
 
         <div class="wf-actions">
           <button class="btn btn-ghost" onclick="nextStep(2)">Back</button>
@@ -551,17 +555,15 @@
 
   <input type="file" id="picker-financials" accept=".xlsx,.xls,.csv" hidden />
   <input type="file" id="picker-logo" accept="image/png,image/jpeg" hidden />
-  <input type="file" id="picker-org" accept=".pdf,.docx,.pptx" hidden multiple />
-  <input type="file" id="picker-notes" accept=".docx,.pdf,.txt" hidden multiple />
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
   <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-  <script src="js/lookup.js?v=2026072404"></script>
-  <script src="js/engine.js?v=2026072404"></script>
-  <script src="js/generators.js?v=2026072404"></script>
-  <script src="js/preview.js?v=2026072404"></script>
-  <script src="js/app.js?v=2026072404"></script>
+  <script src="js/lookup.js?v=2026072405"></script>
+  <script src="js/engine.js?v=2026072405"></script>
+  <script src="js/generators.js?v=2026072405"></script>
+  <script src="js/preview.js?v=2026072405"></script>
+  <script src="js/app.js?v=2026072405"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 /* ============ DealDesk app: state, workflow, generation ============ */
 
 const state = {
-  uploads: { financials: [], org: [], notes: [] },
+  uploads: { financials: [] },
   financials: null, // parsed {years, series, source}
   metrics: null,
   deal: null,
@@ -162,6 +162,70 @@ function refreshBrandingUI() {
   }
 }
 
+function initCompanyField() {
+  const el = document.getElementById("f-company");
+  if (!el) return;
+  el.addEventListener("input", () => {
+    el.classList.remove("field-error");
+    document.getElementById("company-error").hidden = true;
+  });
+  document.querySelectorAll('.check-row input[type="checkbox"]').forEach((cb) =>
+    cb.addEventListener("change", () => (document.getElementById("select-error").hidden = true))
+  );
+}
+
+// Landing page lookup: the fastest possible path to a real document
+async function heroLookup() {
+  const name = document.getElementById("hero-company").value.trim();
+  const out = document.getElementById("hero-result");
+  if (!name) { out.className = "hero-result err"; out.textContent = "Type a public company name first."; return; }
+  out.className = "hero-result";
+  out.textContent = "Looking up " + name + "...";
+  try {
+    const r = await lookupCompany(name);
+    if (!r) {
+      out.className = "hero-result err";
+      out.textContent = "No public profile found for " + name + ". Private companies work too: start a deal and type the numbers in.";
+      return;
+    }
+    state.lookup = r;
+    const bits = [];
+    if (r.ceo) bits.push("CEO " + r.ceo);
+    if (r.employees) bits.push(r.employees.toLocaleString("en-US") + " employees");
+    let verdictLine = "";
+    if (r.revenueSeries) {
+      state.financials = { years: r.revenueSeries.years, series: { revenue: r.revenueSeries.revenue }, source: "lookup" };
+      const m = computeMetrics(state.financials);
+      const deal = { company: r.label, industry: r.industries[0] || "", dealType: "Acquisition", practice: "financial", context: "", situation: {}, lookup: r };
+      const verdict = buildEmail(deal, m).subject.split(";")[0].split(":").slice(1).join(":").trim();
+      bits.push(fmtM(m.revenueLatest) + " revenue, " + fmtPct(m.revenueCAGR) + " growth");
+      verdictLine = `<span class="hero-verdict">Recommendation the engine reaches: ${verdict}</span>`;
+    }
+    out.className = "hero-result ok";
+    out.innerHTML = `<strong>${r.label}</strong> found: ${bits.join("; ")}. ${verdictLine}
+      <button class="btn btn-sm btn-primary hero-go" onclick="startFromHero()">Build the documents</button>`;
+  } catch (e) {
+    out.className = "hero-result err";
+    out.textContent = "Lookup is unavailable right now. Start a deal and type the numbers in instead.";
+  }
+}
+
+function startFromHero() {
+  const name = document.getElementById("hero-company").value.trim();
+  startWorkflow();
+  if (name) document.getElementById("f-company").value = state.lookup ? state.lookup.label : name;
+  if (state.lookup) {
+    const ind = document.getElementById("f-industry");
+    if (!ind.value.trim() && state.lookup.industries[0]) ind.value = state.lookup.industries[0];
+    const st = document.getElementById("lookup-status");
+    st.className = "lookup-status ok";
+    st.textContent = "Using the profile found for " + state.lookup.label + ".";
+    if (state.financials && state.financials.source === "lookup") {
+      addFileChip("financials", "Wikidata reported revenue (" + state.financials.years.join(", ") + ")", "applied");
+    }
+  }
+}
+
 function initBrandingUI() {
   const head = document.getElementById("f-font-head");
   const body = document.getElementById("f-font-body");
@@ -250,7 +314,7 @@ function initPickers() {
       }
     });
   });
-  ["financials", "org", "notes"].forEach((zone) => {
+  ["financials"].forEach((zone) => {
     const input = document.getElementById("picker-" + zone);
     input.addEventListener("change", async () => {
       for (const file of input.files) {
@@ -482,7 +546,14 @@ function fillReview() {
 
   // Warn loudly when a named company would get fictional demo numbers
   const usingSample = !state.financials || state.financials.source === "sample";
-  document.getElementById("sample-warning").hidden = !usingSample;
+  const warn = document.getElementById("sample-warning");
+  warn.hidden = !usingSample;
+  if (usingSample) {
+    const named = deal.company && deal.company !== "Meridian Components Inc.";
+    warn.innerHTML = named
+      ? `No financial statements were provided for <strong>${deal.company}</strong>. The documents will use fictional demo numbers, labeled as illustrative on every file. Go back to add real numbers, or continue.`
+      : "No financial statements were provided, so the documents will use the sample company's illustrative numbers. Upload a spreadsheet or type the numbers on the previous step for real output.";
+  }
 }
 
 /* ---------- Generation ---------- */
@@ -493,66 +564,113 @@ async function runGeneration() {
   if (state.lookupPromise) {
     await Promise.race([state.lookupPromise, new Promise((r) => setTimeout(r, 8000))]);
   }
-  state.deal = getDeal();
-  // Guard: a real company name with no real numbers needs explicit consent
-  const usingSample = !state.financials || state.financials.source === "sample";
-  if (usingSample && state.deal.company !== "Meridian Components Inc.") {
-    const ok = confirm(
-      "No financial statements were provided for " + state.deal.company +
-      ". The documents will use fictional demo numbers, clearly labeled as illustrative. Continue anyway?"
-    );
-    if (!ok) { nextStep(2); return; }
+  const deal = getDeal();
+
+  // The company name drives every document; never substitute silently.
+  if (!document.getElementById("f-company").value.trim()) {
+    nextStep(1);
+    const el = document.getElementById("f-company");
+    el.focus();
+    el.classList.add("field-error");
+    document.getElementById("company-error").hidden = false;
+    return;
   }
+
+  const selected = selectedOutputs();
+  if (!selected.length) {
+    document.getElementById("select-error").hidden = false;
+    return;
+  }
+
+  state.deal = deal;
+  // A real company name with fictional numbers is flagged in plain sight
+  // on the review step and stamped on every document, so no native
+  // popup is needed to interrupt the flow.
   if (!state.financials) state.financials = SAMPLE_FINANCIALS;
   state.metrics = computeMetrics(state.financials);
+  state.blobs = {};
+  setTheme(currentTheme());
 
-  // Retitle the output cards for the selected practice
   const P = practiceOf(state.deal);
   document.querySelector('.output-card[data-output="guide"] h3').textContent = guideTitleOf(state.deal);
   document.querySelector('.output-card[data-output="synergy"] h3').textContent = P.deckShort;
 
   nextStep(4);
-  document.getElementById("gen-title").textContent = "Generating your deal package";
+  document.getElementById("gen-title").textContent = "Building your deal package";
   document.getElementById("gen-sub").textContent =
-    "Each deliverable is drafted from your inputs, entirely in your browser. Nothing is uploaded to a server.";
+    "Each file is being written in your browser right now. Nothing is uploaded to a server.";
   document.getElementById("final-actions").style.visibility = "hidden";
 
   const cards = Array.from(document.querySelectorAll(".output-card"));
   cards.forEach((card) => {
+    const on = selected.includes(card.dataset.output);
+    card.hidden = !on;
     card.classList.remove("ready");
-    setStatus(card, "pending", "Queued");
+    setStatus(card, "pending", on ? "Queued" : "Skipped");
     card.querySelector(".output-bar i").style.width = "0";
     card.querySelectorAll(".output-actions .btn").forEach((b) => (b.disabled = true));
   });
 
-  cards.forEach((card, i) => {
-    setTimeout(() => animateCard(card), 400 + i * 700);
-  });
+  // Build the files one at a time, updating each card when its own file
+  // actually exists. The bar creeps while the work runs and completes
+  // when the blob is in hand, so the progress shown is real progress.
+  for (const key of selected) {
+    const card = cards.find((c) => c.dataset.output === key);
+    setStatus(card, "working", "Writing");
+    const bar = card.querySelector(".output-bar i");
+    let pct = 0;
+    const creep = setInterval(() => {
+      pct = Math.min(88, pct + 9);
+      bar.style.width = pct + "%";
+    }, 90);
+    const started = Date.now();
+    try {
+      state.blobs[key] = await buildOutput(key, state.deal, state.metrics);
+    } catch (e) {
+      clearInterval(creep);
+      console.error("Generation failed for " + key, e);
+      setStatus(card, "working", "Failed");
+      bar.style.width = "100%";
+      continue;
+    }
+    // Files build in well under a second; hold each card briefly so the
+    // sequence stays readable instead of flashing past.
+    const elapsed = Date.now() - started;
+    if (elapsed < 320) await new Promise((r) => setTimeout(r, 320 - elapsed));
+    clearInterval(creep);
+    bar.style.width = "100%";
+    setStatus(card, "ready", "Ready");
+    card.classList.add("ready");
+    card.querySelectorAll(".output-actions .btn").forEach((b) => (b.disabled = false));
+  }
 
-  const totalTime = 400 + cards.length * 700 + 2200;
-  setTimeout(() => {
-    document.getElementById("gen-title").textContent = "Your deal package is ready";
-    document.getElementById("gen-sub").textContent =
-      "Preview each deliverable below, or download real Word, PowerPoint, and Excel files.";
-    document.getElementById("final-actions").style.visibility = "visible";
-  }, totalTime);
+  const failed = selected.filter((k) => !state.blobs[k]);
+  document.getElementById("gen-title").textContent = failed.length
+    ? "Some files could not be built"
+    : "Your deal package is ready";
+  document.getElementById("gen-sub").textContent = failed.length
+    ? "Try again, or download the files that did build."
+    : "Preview any file below, or download it. Every file is already built, so downloads are instant.";
+  document.getElementById("final-actions").style.visibility = "visible";
 }
 
-function animateCard(card) {
-  setStatus(card, "working", "Drafting");
-  const bar = card.querySelector(".output-bar i");
-  let pct = 0;
-  const tick = setInterval(() => {
-    pct += 10 + Math.random() * 16;
-    if (pct >= 100) {
-      pct = 100;
-      clearInterval(tick);
-      setStatus(card, "ready", "Ready");
-      card.classList.add("ready");
-      card.querySelectorAll(".output-actions .btn").forEach((b) => (b.disabled = false));
-    }
-    bar.style.width = pct + "%";
-  }, 220);
+// Which deliverables the user actually asked for
+function selectedOutputs() {
+  const map = { "c-summary": "summary", "c-guide": "guide", "c-synergy": "synergy", "c-model": "model" };
+  return Object.entries(map)
+    .filter(([id]) => document.getElementById(id).checked)
+    .map(([, key]) => key);
+}
+
+// One place that knows how to build each deliverable
+async function buildOutput(key, deal, m) {
+  if (key === "summary") return generateSummaryDocx(deal, m);
+  if (key === "guide") return generateGuideDocx(deal, m);
+  if (key === "synergy") return generateSynergyPptx(deal, m);
+  if (key === "model") {
+    return { model: generateModelXlsx(deal, m), email: await generateEmailDocx(deal, m) };
+  }
+  throw new Error("unknown output " + key);
 }
 
 function setStatus(card, kind, label) {
@@ -564,29 +682,43 @@ function setStatus(card, kind, label) {
 /* ---------- Downloads ---------- */
 
 async function downloadOutput(kind, btn) {
-  setTheme(currentTheme());
   const deal = state.deal || getDeal();
   const m = state.metrics || computeMetrics(state.financials || SAMPLE_FINANCIALS);
   const base = slug(deal.company);
   const original = btn ? btn.textContent : null;
-  if (btn) { btn.disabled = true; btn.textContent = "Building..."; }
+  if (btn) { btn.disabled = true; btn.textContent = "Saving..."; }
 
   try {
-    if (kind === "summary") {
-      downloadBlob(await generateSummaryDocx(deal, m), `${base}_Business_Summary.docx`);
-    } else if (kind === "guide") {
-      downloadBlob(await generateGuideDocx(deal, m), `${base}_Interview_Guide.docx`);
-    } else if (kind === "synergy") {
-      downloadBlob(await generateSynergyPptx(deal, m), `${base}_Synergy_Presentation.pptx`);
-    } else if (kind === "model") {
-      downloadBlob(generateModelXlsx(deal, m), `${base}_Deal_Model.xlsx`);
-      downloadBlob(await generateEmailDocx(deal, m), `${base}_Email_Summary.docx`);
+    // Files were built during generation; only build here if a user
+    // reached a download without going through that step.
+    const blobs = state.blobs || (state.blobs = {});
+    const get = async (k) => (blobs[k] = blobs[k] || (await buildOutput(k, deal, m)));
+
+    if (kind === "summary") downloadBlob(await get("summary"), `${base}_Business_Summary.docx`);
+    else if (kind === "guide") downloadBlob(await get("guide"), `${base}_Interview_Guide.docx`);
+    else if (kind === "synergy") downloadBlob(await get("synergy"), `${base}_Synergy_Presentation.pptx`);
+    else if (kind === "model") {
+      const pair = await get("model");
+      downloadBlob(pair.model, `${base}_Deal_Model.xlsx`);
+      downloadBlob(pair.email, `${base}_Email_Summary.docx`);
     } else if (kind === "package") {
-      downloadBlob(await generatePackageZip(deal, m), `${base}_Deal_Package.zip`);
+      const zip = new JSZip();
+      const keys = selectedOutputs();
+      for (const k of keys) {
+        const b = await get(k);
+        if (k === "summary") zip.file(`${base}_Business_Summary.docx`, b);
+        if (k === "guide") zip.file(`${base}_Interview_Guide.docx`, b);
+        if (k === "synergy") zip.file(`${base}_Synergy_Presentation.pptx`, b);
+        if (k === "model") {
+          zip.file(`${base}_Deal_Model.xlsx`, b.model);
+          zip.file(`${base}_Email_Summary.docx`, b.email);
+        }
+      }
+      downloadBlob(await zip.generateAsync({ type: "blob" }), `${base}_Deal_Package.zip`);
     }
   } catch (e) {
-    console.error("Generation failed:", e);
-    alert("Sorry, that document failed to generate. Check the console for details.");
+    console.error("Download failed:", e);
+    alert("Sorry, that file could not be saved. Check the console for details.");
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = original; }
   }
@@ -696,4 +828,5 @@ document.addEventListener("keydown", (e) => {
 
 initPickers();
 initBrandingUI();
+initCompanyField();
 refreshGoalOptions();
