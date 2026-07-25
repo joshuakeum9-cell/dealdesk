@@ -131,6 +131,17 @@ function addFileChip(zone, name, note) {
 }
 
 function initPickers() {
+  // Upload zones: reachable and operable by keyboard
+  document.querySelectorAll(".upload-zone").forEach((z) => {
+    z.setAttribute("tabindex", "0");
+    z.setAttribute("role", "button");
+    z.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        z.click();
+      }
+    });
+  });
   ["financials", "org", "notes"].forEach((zone) => {
     const input = document.getElementById("picker-" + zone);
     input.addEventListener("change", async () => {
@@ -305,7 +316,6 @@ function getDeal() {
     company: val("f-company", "Meridian Components Inc."),
     industry: val("f-industry", "Industrial manufacturing"),
     dealType: document.getElementById("f-dealtype").value,
-    revenueBand: document.getElementById("f-revenue").value,
     context: document.getElementById("f-context").value.trim(),
     lookup: state.lookup || null,
     profile: readProfile(),
@@ -358,7 +368,6 @@ function fillReview() {
   document.getElementById("r-company").textContent = deal.company;
   document.getElementById("r-industry").textContent = deal.industry;
   document.getElementById("r-dealtype").textContent = deal.dealType;
-  document.getElementById("r-revenue").textContent = deal.revenueBand;
   const total = Object.values(state.uploads).reduce((n, arr) => n + arr.length, 0);
   document.getElementById("r-files").textContent =
     total > 0 ? total + " file" + (total > 1 ? "s" : "") : "None (sample data will be used)";

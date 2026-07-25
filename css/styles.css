@@ -299,10 +299,18 @@ textarea { resize: vertical; }
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 .practice-card:hover { border-color: var(--primary); }
-.practice-card input { display: none; }
+/* Radios stay in the tab order but render invisibly inside the card */
+.practice-card input {
+  position: absolute; width: 1px; height: 1px;
+  clip-path: inset(50%); overflow: hidden; white-space: nowrap;
+}
+.practice-card { position: relative; }
 .practice-card:has(input:checked) {
   border-color: var(--primary); background: var(--pale-green);
   box-shadow: inset 0 0 0 1px var(--primary);
+}
+.practice-card:has(input:focus-visible) {
+  outline: 2px solid var(--focus-blue); outline-offset: 2px;
 }
 .practice-name { font-family: var(--font-display); font-weight: 500; font-size: 16px; color: var(--ink); }
 .practice-blurb { font-size: 13px; color: var(--body-muted); line-height: 1.4; }

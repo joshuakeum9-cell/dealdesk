@@ -233,7 +233,7 @@ function docFooter() {
         tabStops: [{ type: docx.TabStopType.RIGHT, position: 9360 }],
         spacing: { before: 60, after: 0 },
         children: [
-          run("Draft for discussion purposes only", { size: 16, color: THEME.gray }),
+          run(THEME.branded ? "Private and confidential" : "Draft for discussion purposes only", { size: 16, color: THEME.gray }),
           new docx.TextRun({ text: "\t" }),
           new docx.TextRun({
             font: THEME.sans,
@@ -910,6 +910,7 @@ function generateModelXlsx(deal, m) {
   const term = practiceTerm(deal);
   const sc = computeScenarios(deal, m);
   const inp = sc.inputs;
+  const hasLines = !!(m.series.cogs && m.series.opex);
   const NUMFMT = "#,##0.0;(#,##0.0)";
   const PCT = "0.0%";
   const MULT = '0.0"x"';
@@ -974,8 +975,12 @@ function generateModelXlsx(deal, m) {
   put(I, r, 0, "Revenue growth, annual", { s: ST.label });
   refs.growth = put(I, r++, 1, growthDefault, { z: PCT, s: ST.input });
   const projMarginDefault = m.ebitdaMargin !== null && m.ebitdaMargin > 0 ? Math.round(m.ebitdaMargin * 1000) / 1000 : 0.15;
-  put(I, r, 0, "EBITDA margin, projection years", { s: ST.label });
-  refs.projMargin = put(I, r++, 1, projMarginDefault, { z: PCT, s: ST.input });
+  if (!hasLines) {
+    // Only meaningful when cost lines are absent; with full data the
+    // forecast margin follows the cost ratios, so this input would be dead.
+    put(I, r, 0, "EBITDA margin, projection years", { s: ST.label });
+    refs.projMargin = put(I, r++, 1, projMarginDefault, { z: PCT, s: ST.input });
+  }
   r++;
   section(I, r++, "SYNERGY ASSUMPTIONS, EACH APPLIED TO ITS OWN LINE", 2);
   put(I, r, 0, "Revenue uplift, low end", { s: ST.label });
@@ -1039,7 +1044,6 @@ function generateModelXlsx(deal, m) {
     }
     r++;
   }
-  const hasLines = !!(m.series.cogs && m.series.opex);
   const ebitdaAddrs = [];
   put(M, r, 0, "EBITDA", { s: ST.labelBold });
   for (let i = 0; i < nA + 5; i++) {
