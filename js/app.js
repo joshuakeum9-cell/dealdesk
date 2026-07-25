@@ -21,37 +21,44 @@ async function runLookup() {
   }
   status.className = "lookup-status";
   status.textContent = "Looking up " + name + "...";
-  try {
-    const r = await lookupCompany(name);
-    if (!r) {
+  // Track the in flight promise so generation can wait for it instead
+  // of silently building documents without the arriving profile.
+  state.lookupPromise = (async () => {
+    try {
+      const r = await lookupCompany(name);
+      if (!r) {
+        state.lookup = null;
+        status.className = "lookup-status err";
+        status.textContent = "No public profile found. Private companies: continue manually.";
+        return;
+      }
+      state.lookup = r;
+      const industryEl = document.getElementById("f-industry");
+      if (!industryEl.value.trim() && (r.industries[0] || r.shortDescription)) {
+        industryEl.value = r.industries[0] || r.shortDescription;
+      }
+      const found = [];
+      if (r.description) found.push("description");
+      if (r.ceo) found.push("CEO " + r.ceo);
+      if (r.employees) found.push(r.employees.toLocaleString("en-US") + " employees");
+      if (r.revenueSeries) {
+        found.push("revenue " + r.revenueSeries.years[0] + " to " + r.revenueSeries.years[r.revenueSeries.years.length - 1]);
+        if (!state.financials || state.financials.source === "sample") {
+          state.financials = { years: r.revenueSeries.years, series: { revenue: r.revenueSeries.revenue }, source: "lookup" };
+          addFileChip("financials", "Wikidata reported revenue (" + r.revenueSeries.years.join(", ") + ")", "applied");
+        }
+      }
+      status.className = "lookup-status ok";
+      status.textContent = "Found " + r.label + ": " + found.join("; ") + ". Documents will use this profile.";
+    } catch (e) {
       state.lookup = null;
       status.className = "lookup-status err";
-      status.textContent = "No public profile found. Private companies: continue manually.";
-      return;
+      status.textContent = "Lookup unavailable right now; continue manually.";
+    } finally {
+      state.lookupPromise = null;
     }
-    state.lookup = r;
-    const industryEl = document.getElementById("f-industry");
-    if (!industryEl.value.trim() && (r.industries[0] || r.shortDescription)) {
-      industryEl.value = r.industries[0] || r.shortDescription;
-    }
-    const found = [];
-    if (r.description) found.push("description");
-    if (r.ceo) found.push("CEO " + r.ceo);
-    if (r.employees) found.push(r.employees.toLocaleString("en-US") + " employees");
-    if (r.revenueSeries) {
-      found.push("revenue " + r.revenueSeries.years[0] + " to " + r.revenueSeries.years[r.revenueSeries.years.length - 1]);
-      if (!state.financials || state.financials.source === "sample") {
-        state.financials = { years: r.revenueSeries.years, series: { revenue: r.revenueSeries.revenue }, source: "lookup" };
-        addFileChip("financials", "Wikidata reported revenue (" + r.revenueSeries.years.join(", ") + ")", "applied");
-      }
-    }
-    status.className = "lookup-status ok";
-    status.textContent = "Found " + r.label + ": " + found.join("; ") + ". Documents will use this profile.";
-  } catch (e) {
-    state.lookup = null;
-    status.className = "lookup-status err";
-    status.textContent = "Lookup unavailable right now; continue manually.";
-  }
+  })();
+  await state.lookupPromise;
 }
 
 const FONT_PAIRS = {
@@ -379,7 +386,12 @@ function fillReview() {
 
 /* ---------- Generation ---------- */
 
-function runGeneration() {
+async function runGeneration() {
+  // A lookup still in flight would arrive after the documents build;
+  // wait for it briefly rather than dropping it.
+  if (state.lookupPromise) {
+    await Promise.race([state.lookupPromise, new Promise((r) => setTimeout(r, 8000))]);
+  }
   state.deal = getDeal();
   // Guard: a real company name with no real numbers needs explicit consent
   const usingSample = !state.financials || state.financials.source === "sample";
