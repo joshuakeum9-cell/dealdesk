@@ -255,7 +255,12 @@ async function packDocx(deal, children) {
     sections: [
       {
         properties: {
-          page: { margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 } },
+          page: {
+            // US Letter, stated explicitly: the library defaults to A4,
+            // which prints wrong for a US audience.
+            size: { width: 12240, height: 15840 },
+            margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 },
+          },
         },
         headers: { default: docHeader(deal) },
         footers: { default: docFooter() },
@@ -600,7 +605,8 @@ async function generateGuideDocx(deal, m) {
    3. Synergy Presentation (.pptx)
    ================================================================ */
 
-const SLIDE_W = 13.33;
+const SLIDE_W = 13.333;
+const SLIDE_H = 7.5;
 const MARGIN = 0.45;
 
 /* Deterministic text fitting: PowerPoint only applies its shrink
@@ -729,7 +735,12 @@ async function generateSynergyPptx(deal, m) {
   const score = { High: 3, Medium: 2, Low: 1 };
 
   const pptx = new PptxGenJS();
-  pptx.layout = "LAYOUT_16x9";
+  // Every coordinate below is laid out on a 13.333 by 7.5 inch canvas.
+  // The built in "LAYOUT_16x9" is only 10 by 5.625 inches, which would
+  // push the right quarter of each slide and everything below 5.6in off
+  // the page, so the canvas is declared explicitly.
+  pptx.defineLayout({ name: "DD_WIDE", width: SLIDE_W, height: SLIDE_H });
+  pptx.layout = "DD_WIDE";
   pptx.defineSlideMaster({
     title: "CONTENT",
     background: { color: "FFFFFF" },
