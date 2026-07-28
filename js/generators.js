@@ -1228,3 +1228,129 @@ async function generatePackageZip(deal, m) {
   zip.file(`${base}_Email_Summary.docx`, email);
   return zip.generateAsync({ type: "blob" });
 }
+
+/* ================================================================
+   Diagnosis memo (.docx)
+   Written when live filing data is available: a numbered situation,
+   complication, diagnosis, recommendation memo answering the question
+   the analysis derived, with the quarterly evidence table and a
+   sources line naming the filings behind every figure.
+   ================================================================ */
+
+function memoSectionHead(num, text) {
+  return para(
+    [
+      run(num + "  ", { serif: true, size: 26, bold: true, color: THEME.accent }),
+      run(text, { serif: true, size: 26, bold: true, color: THEME.ink }),
+    ],
+    { before: 300, after: 120, borderBottom: true }
+  );
+}
+
+// Quarterly evidence table: the series the argument rests on
+function quarterTable(a) {
+  const qs = a.withMargin.slice(-8);
+  const big = qs.some((q) => q.revenue >= 10000);
+  const div = big ? 1000 : 1;
+  const unit = big ? "$B" : "$M";
+  const header = ["Quarter", `Revenue ${unit}`, `Operating income ${unit}`, "Margin", "Revenue YoY"];
+  const rows = qs.map((q) => [
+    q.label + (q.derived ? " (derived)" : ""),
+    (q.revenue / div).toFixed(1),
+    q.opIncome === null ? "n/a" : (q.opIncome / div).toFixed(1),
+    q.margin === null ? "n/a" : fmtPct(q.margin),
+    q.revYoY === null ? "n/a" : fmtPct(q.revYoY),
+  ]);
+
+  const cell = (text, { headerRow, first, highlight } = {}) =>
+    new docx.TableCell({
+      shading: headerRow ? { fill: THEME.ink } : highlight ? { fill: THEME.fill } : undefined,
+      margins: { top: 80, bottom: 80, left: 120, right: 120 },
+      children: [
+        new docx.Paragraph({
+          alignment: first ? docx.AlignmentType.LEFT : docx.AlignmentType.RIGHT,
+          spacing: { after: 0 },
+          children: [
+            run(text, {
+              size: 19,
+              bold: headerRow || highlight,
+              color: headerRow ? THEME.onInk : THEME.body,
+            }),
+          ],
+        }),
+      ],
+    });
+
+  const lastIdx = rows.length - 1;
+  return new docx.Table({
+    width: { size: 100, type: docx.WidthType.PERCENTAGE },
+    borders: {
+      top: { style: docx.BorderStyle.SINGLE, size: 8, color: THEME.ink },
+      bottom: { style: docx.BorderStyle.SINGLE, size: 8, color: THEME.ink },
+      left: { style: docx.BorderStyle.NONE },
+      right: { style: docx.BorderStyle.NONE },
+      insideHorizontal: { style: docx.BorderStyle.SINGLE, size: 4, color: THEME.rule },
+      insideVertical: { style: docx.BorderStyle.NONE },
+    },
+    rows: [
+      new docx.TableRow({ children: header.map((h, i) => cell(h, { headerRow: true, first: i === 0 })) }),
+      ...rows.map((r, ri) =>
+        new docx.TableRow({
+          children: r.map((c, i) => cell(c, { first: i === 0, highlight: ri === lastIdx })),
+        })
+      ),
+    ],
+  });
+}
+
+async function generateDiagnosisMemoDocx(deal, m) {
+  const a = deal.analysis;
+  const profile = deal.filings;
+  const n = buildMemoNarrative(a, profile);
+  const L = deal.lookup;
+
+  const children = [
+    para(run("DEALDESK  /  OPERATIONAL DIAGNOSIS", { size: 18, bold: true, color: THEME.accent }), { after: 60 }),
+    para(run(a.company.toUpperCase(), { size: 20, bold: true, color: THEME.gray }), { after: 100 }),
+    para(run(`${a.company}: ${a.question.replace(/^Is |^Can |^Where /, (s) => s)}`, { serif: true, size: 52, color: THEME.ink }), { after: 100 }),
+    para(
+      run(
+        `Operational diagnosis prepared from public filings   ·   Latest reported quarter: ${profile.asOf ? profile.asOf.period : "n/a"}`,
+        { size: 20, color: THEME.gray }
+      ),
+      { after: 60, borderBottom: true }
+    ),
+    para([run("To: ", { bold: true }), run(`${a.company} leadership (illustrative)`)], { after: 40 }),
+    para([run("From: ", { bold: true }), run("DealDesk")], { after: 40 }),
+    para([run("Re: ", { bold: true }), run(a.question)], { after: 200 }),
+
+    memoSectionHead("01", "Answer up front"),
+    bodyPara(a.answer),
+    ...(a.watch && a.watch.text ? [bodyPara(a.watch.text)] : []),
+
+    memoSectionHead("02", "Situation"),
+    ...(L && L.description ? [bodyPara(L.description)] : []),
+    ...n.situation.map((s) => bodyPara(s)),
+
+    memoSectionHead("03", "Complication"),
+    bodyPara(n.complication),
+
+    memoSectionHead("04", "Diagnosis"),
+    bodyPara(n.diagnosisLead),
+    ...a.findings.map((f, i) => findingPara(i + 1, f.lead, f.text)),
+    para(run(""), { after: 40 }),
+    quarterTable(a),
+    sourceLine(
+      `Quarterly figures as reported in ${a.company} SEC filings. Quarters marked derived are the fiscal year less the three reported quarters, the standard treatment where a filer reports the fourth quarter only in the annual report.`
+    ),
+
+    memoSectionHead("05", "Recommendation"),
+    ...n.recommendations.map(([head, text], i) => findingPara(i + 1, head, text)),
+
+    memoSectionHead("06", "What would change the call"),
+    ...n.changeTheCall.map((t) => bodyPara(t, { bullet: true })),
+
+    para(run(a.source, { size: 16, color: THEME.gray }), { before: 300 }),
+  ];
+  return packDocx(deal, children);
+}

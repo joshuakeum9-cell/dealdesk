@@ -6,8 +6,34 @@ const state = {
   metrics: null,
   deal: null,
   brandLogo: null, // {b64, mime, w, h}
-  lookup: null, // company profile from Wikipedia and Wikidata
+  lookup: null, // description, leadership, logo colors
+  filings: null, // quarterly series straight from SEC filings
+  analysis: null, // the diagnosis derived from that series
 };
+
+/* ---------- Live filings: the analytical spine ----------
+   Filings give the numbers and the citation; the encyclopedia lookup
+   gives the description and leadership. Filings come first because the
+   documents argue from them. */
+
+async function loadFilings(name, say) {
+  try {
+    const profile = await fetchFilingProfile(name, say);
+    if (!profile || profile.error || !profile.quarters || !profile.quarters.length) return null;
+    state.filings = profile;
+    state.analysis = analyzeFilings(profile);
+    // The annual series keeps the existing model and deck working
+    if (profile.annual && profile.annual.length >= 2) {
+      const series = { revenue: profile.annual.map((a) => a.revenue) };
+      if (profile.annual.every((a) => a.cost !== null)) series.cogs = profile.annual.map((a) => a.cost);
+      if (profile.annual.every((a) => a.opex !== null)) series.opex = profile.annual.map((a) => a.opex);
+      state.financials = { years: profile.annual.map((a) => a.year), series, source: "filings" };
+    }
+    return profile;
+  } catch (e) {
+    return null;
+  }
+}
 
 /* ---------- Company lookup (Wikipedia + Wikidata, free, keyless) ---------- */
 
@@ -25,6 +51,17 @@ async function runLookup() {
   // of silently building documents without the arriving profile.
   state.lookupPromise = (async () => {
     try {
+      const filings = await loadFilings(name, (s) => { status.textContent = s + "..."; });
+      if (filings && state.analysis) {
+        const a = state.analysis;
+        addFileChip("financials", `SEC filings: ${filings.quarters.length} quarters through ${filings.asOf.period}`, "applied");
+        status.className = "lookup-status ok";
+        status.textContent = `${a.company}: ${filings.quarters.length} quarters from SEC filings through ${filings.asOf.period}. Diagnosis: ${a.question}`;
+        const industryEl0 = document.getElementById("f-industry");
+        if (!industryEl0.value.trim() && filings.company.sic) industryEl0.value = filings.company.sic;
+        const nameEl = document.getElementById("f-company");
+        if (nameEl.value.trim().length <= 5) nameEl.value = a.company;
+      }
       const r = await lookupCompany(name);
       if (!r) {
         state.lookup = null;
@@ -45,15 +82,19 @@ async function runLookup() {
         found.push("revenue " + r.revenueSeries.years[0] + " to " + r.revenueSeries.years[r.revenueSeries.years.length - 1]);
         if (!state.financials || state.financials.source === "sample") {
           state.financials = { years: r.revenueSeries.years, series: { revenue: r.revenueSeries.revenue }, source: "lookup" };
-          addFileChip("financials", "Wikidata reported revenue (" + r.revenueSeries.years.join(", ") + ")", "applied");
+          addFileChip("financials", "Reported revenue (" + r.revenueSeries.years.join(", ") + ")", "applied");
         }
       }
-      status.className = "lookup-status ok";
-      status.textContent = "Found " + r.label + ": " + found.join("; ") + ". Documents will use this profile.";
+      if (!state.analysis) {
+        status.className = "lookup-status ok";
+        status.textContent = "Found " + r.label + ": " + found.join("; ") + ". Documents will use this profile.";
+      }
     } catch (e) {
-      state.lookup = null;
-      status.className = "lookup-status err";
-      status.textContent = "Lookup unavailable right now; continue manually.";
+      if (!state.analysis) {
+        state.lookup = null;
+        status.className = "lookup-status err";
+        status.textContent = "Lookup unavailable right now; continue manually.";
+      }
     } finally {
       state.lookupPromise = null;
     }
@@ -182,10 +223,22 @@ async function heroLookup() {
   out.className = "hero-result";
   out.textContent = "Looking up " + name + "...";
   try {
+    const filings = await loadFilings(name, (s) => { out.textContent = s + "..."; });
+    if (filings && state.analysis) {
+      const a = state.analysis;
+      out.className = "hero-result ok";
+      out.innerHTML =
+        `<strong>${a.question}</strong>` +
+        `<span class="hero-verdict">${a.answer}</span>` +
+        `<span class="hero-src">${filings.quarters.length} quarters from ${a.company} SEC filings, latest ${filings.asOf.period} (${filings.asOf.form} filed ${filings.asOf.filed}).</span>` +
+        `<button class="btn btn-sm btn-primary hero-go" onclick="startFromHero()">Build the documents</button>`;
+      lookupCompany(name).then((r) => { if (r) state.lookup = r; }).catch(() => {});
+      return;
+    }
     const r = await lookupCompany(name);
     if (!r) {
       out.className = "hero-result err";
-      out.textContent = "No public profile found for " + name + ". Private companies work too: start a deal and type the numbers in.";
+      out.textContent = "No filings or public profile found for " + name + ". Private companies work too: start a deal and type the numbers in.";
       return;
     }
     state.lookup = r;
@@ -213,7 +266,16 @@ async function heroLookup() {
 function startFromHero() {
   const name = document.getElementById("hero-company").value.trim();
   startWorkflow();
-  if (name) document.getElementById("f-company").value = state.lookup ? state.lookup.label : name;
+  const display = state.analysis ? state.analysis.company : state.lookup ? state.lookup.label : name;
+  if (name) document.getElementById("f-company").value = display;
+  if (state.filings) {
+    const st = document.getElementById("lookup-status");
+    st.className = "lookup-status ok";
+    st.textContent = `${state.filings.quarters.length} quarters from SEC filings through ${state.filings.asOf.period}. Diagnosis: ${state.analysis.question}`;
+    const ind = document.getElementById("f-industry");
+    if (!ind.value.trim() && state.filings.company.sic) ind.value = state.filings.company.sic;
+    addFileChip("financials", `SEC filings: ${state.filings.quarters.length} quarters through ${state.filings.asOf.period}`, "applied");
+  }
   if (state.lookup) {
     const ind = document.getElementById("f-industry");
     if (!ind.value.trim() && state.lookup.industries[0]) ind.value = state.lookup.industries[0];
@@ -490,6 +552,8 @@ function getDeal() {
     dealType: document.getElementById("f-dealtype").value,
     context: document.getElementById("f-context").value.trim(),
     lookup: state.lookup || null,
+    filings: state.filings || null,
+    analysis: state.analysis || null,
     profile: readProfile(),
     situation: {
       goal: sval("s-goal"),
@@ -664,7 +728,11 @@ function selectedOutputs() {
 
 // One place that knows how to build each deliverable
 async function buildOutput(key, deal, m) {
-  if (key === "summary") return generateSummaryDocx(deal, m);
+  // With live filing data the summary becomes a diagnosis memo, which
+  // answers a real question instead of describing the company.
+  if (key === "summary") {
+    return deal.analysis ? generateDiagnosisMemoDocx(deal, m) : generateSummaryDocx(deal, m);
+  }
   if (key === "guide") return generateGuideDocx(deal, m);
   if (key === "synergy") return generateSynergyPptx(deal, m);
   if (key === "model") {

@@ -209,3 +209,104 @@ function analyzeFilings(profile) {
       : "Source: SEC EDGAR company filings.",
   };
 }
+
+/* ---------- Memo narrative ----------
+   Turns the diagnosis into the sections a diagnosis memo needs:
+   situation, complication, recommendation, and what would change the
+   call. Each block is written per pattern, so the memo argues the case
+   the data supports rather than a generic one. */
+
+const PATTERN_NARRATIVE = {
+  volume_for_margin: {
+    complication:
+      "Volume leaves on a schedule, but the gains it is meant to buy arrive on their own. For several quarters the business carries cost built for revenue it no longer earns. The risk is stranded capacity, so the question is not whether margin is rising, it is whether the cost base is shrinking fast enough to keep it rising.",
+    recommendations: [
+      ["Keep cost leaving at least as fast as revenue", "Capacity freed by the exit has to come out on the same schedule, or the margin gain stalls once the easy reductions are done."],
+      ["Refill with margin, not volume", "Replace what left with business that clears the current margin, rather than chasing the revenue line back to where it was."],
+      ["Hold the discipline that created the gain", "The improvement came from mix and price. Protect it in the next contract cycle before pursuing new volume."],
+    ],
+  },
+  shrink_not_paying: {
+    complication:
+      "The top line is contracting and margin is going with it, which means the shrink is not yet buying better economics. Either cost is leaving more slowly than revenue, or the revenue that left was more profitable than assumed. Both readings point at the cost base, and both get worse the longer they run.",
+    recommendations: [
+      ["Rebuild the cost base to the smaller revenue", "Size the network, footprint, and overhead to the revenue the business earns now, not the revenue it planned for."],
+      ["Separate deliberate exits from lost business", "A planned exit and an unplanned loss look identical in the revenue line and call for opposite responses. Split them before deciding anything."],
+      ["Protect the profitable core first", "Before pursuing recovery volume, confirm the remaining book is not also eroding on price."],
+    ],
+  },
+  growth_diluting: {
+    complication:
+      "Revenue is growing while margin is falling, so the incremental business is coming in below the economics of the existing book. That is sustainable only if the new revenue is an investment with a known payback. Without that, growth is quietly buying down the margin.",
+    recommendations: [
+      ["Price the incremental business honestly", "Measure the margin on new revenue separately from the base. If it is dilutive, decide deliberately whether the share is worth it."],
+      ["Find the fixed cost that grew with it", "Growth that costs margin usually added structure. Identify what was added and whether it scales."],
+      ["Set a floor", "Define the margin the business will not go below to win volume, and hold it."],
+    ],
+  },
+  scaling: {
+    complication:
+      "Growth at this rate normally costs margin, because the cost to serve rises with the base. Holding margin flat while growing is the achievement, and it is also the fragile part: the next leg of growth is usually where operating leverage breaks.",
+    recommendations: [
+      ["Find where the next unit of cost enters", "Identify the step change, whether capacity, headcount, or infrastructure, that the next growth leg triggers, and plan it before it arrives."],
+      ["Protect the mix that holds the margin", "The margin is holding because of what is being sold. Confirm growth is not gradually shifting toward the lower margin end."],
+      ["Convert scale into price or cost advantage", "Scale that does not lower unit cost or raise price is only volume."],
+    ],
+  },
+  compounding: {
+    complication:
+      "Revenue and margin are rising together, which is the healthiest pattern and the easiest to take for granted. The risk is not this quarter, it is assuming the leverage continues without knowing what produces it.",
+    recommendations: [
+      ["Name the source of the leverage", "Establish whether the gain is price, mix, volume absorbing fixed cost, or one time relief. Only the first three repeat."],
+      ["Invest while the economics are strong", "Expansion is cheapest to fund while margin is expanding, not after it has peaked."],
+      ["Watch for the ceiling", "Track whether the margin gain per quarter is shrinking, the first sign the leverage is exhausted."],
+    ],
+  },
+  recovering: {
+    complication:
+      "A recovery that has held for a few quarters is not yet a trend. The question is whether margin is recovering because the cost problem was fixed, or because a temporary drag rolled off. The two look identical for two or three quarters and then diverge.",
+    recommendations: [
+      ["Separate structural repair from a drag rolling off", "Confirm which part of the recovery is a cost change that persists and which was a one time item ending."],
+      ["Lock in the structural part", "Whatever produced the durable improvement should be made permanent before attention moves elsewhere."],
+      ["Set the bar above the trough", "Judge the next quarters against the pre trough level, not against the worst quarter."],
+    ],
+  },
+  steady: {
+    complication:
+      "Neither the top line nor margin is moving much, which means the business is not in trouble and also not creating value from its current shape. Steady is comfortable, and it is the condition in which competitors accumulate advantages quietly.",
+    recommendations: [
+      ["Find the growth that is already available", "Identify the adjacent segment, channel, or price move the business could take without changing what it is."],
+      ["Take the cost that steady state hides", "Flat performance rarely triggers cost scrutiny. Benchmark the cost base while no crisis is forcing it."],
+      ["Decide what to stop", "In a steady business the fastest margin gain is usually ending something rather than starting something."],
+    ],
+  },
+};
+
+function buildMemoNarrative(a, profile) {
+  const spec = PATTERN_NARRATIVE[a.pattern] || PATTERN_NARRATIVE.steady;
+  const co = a.company;
+  const first = a.withMargin[0] || a.quarters[0];
+  const last = a.withMargin[a.withMargin.length - 1] || a.quarters[a.quarters.length - 1];
+  const sector = profile.company.sic ? profile.company.sic.toLowerCase() : null;
+
+  return {
+    situation: [
+      `${co} is a ${profile.company.exchange || "US"} listed ${sector ? sector + " " : ""}filer reporting ${money(last.revenue)} of revenue in ${last.label}, its most recently reported quarter.`,
+      `Across the ${a.quarters.length} quarters on file, revenue moved from ${money(first.revenue)} in ${first.label} to ${money(last.revenue)} in ${last.label}${
+        a.trailingAvg !== null ? `, with operating margin averaging ${pct(a.trailingAvg)} over the last four quarters` : ""
+      }.`,
+    ],
+    complication: spec.complication,
+    diagnosisLead: `The question: across the ${a.withMargin.length} quarters with reported operating income, are revenue and the cost base moving in a way that builds margin or erodes it?`,
+    recommendations: spec.recommendations,
+    changeTheCall: [
+      a.watch && a.watch.target !== null
+        ? `If ${a.watch.quarter} operating margin lands at or above ${pct(a.watch.target)}, the reading here holds and the question moves from diagnosing margin to sustaining it.`
+        : null,
+      a.watch && a.watch.target !== null
+        ? `If it prints below ${pct(a.watch.target - 0.01)}, the pattern described here is not holding, and the cost base becomes the first priority rather than one of several.`
+        : null,
+      "These figures are company wide as filed. A business with divergent segments can hold a stable consolidated margin while one segment deteriorates, so segment detail would sharpen this read.",
+    ].filter(Boolean),
+  };
+}
