@@ -2,6 +2,13 @@
    White editorial canvas, deep green product band, near-black pill
    CTAs, stone cards, mono labels, flat border-driven depth. */
 
+/* The hidden attribute has to beat every layout rule below it. Any
+   class that sets display, and most of them do, silently overrides the
+   browser default of display:none and leaves a "hidden" element on
+   screen. That is how the font pairing and the mix and match controls
+   ended up visible at the same time. */
+[hidden] { display: none !important; }
+
 :root {
   --primary: #17171c;
   --black: #000000;

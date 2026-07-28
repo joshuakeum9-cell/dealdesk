@@ -212,8 +212,14 @@ function updateColorReadout(inputId, boxId) {
 function refreshBrandingUI() {
   updateColorReadout("f-brand-primary", "ro-primary");
   updateColorReadout("f-brand-accent", "ro-accent");
+  // One control or the other, never both. A named pairing already fixes
+  // both fonts, so the mix and match selects are hidden and disabled
+  // rather than sitting there implying they still have a say.
   const custom = document.getElementById("f-fonts").value === "custom";
   document.getElementById("custom-fonts").hidden = !custom;
+  ["f-font-head", "f-font-body"].forEach((id) => {
+    document.getElementById(id).disabled = !custom;
+  });
   const f = chosenFonts();
   const sample = document.getElementById("font-sample");
   if (sample) {

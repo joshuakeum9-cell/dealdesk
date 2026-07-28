@@ -878,20 +878,17 @@ async function generateSynergyPptx(deal, m) {
    4. Excel model (.xlsx) + email (.docx)
    ================================================================ */
 
-function buildModelWorkbook(deal, m) {
-  // Four linked sheets, banker style: yellow input cells drive every
-  // other number. Inputs (assumptions and multiples), Model
-  // (historicals plus a five year projection), Synergies (three
-  // scenarios), Valuation (multiple driven, with value creation).
+/* Shared spreadsheet machinery. Both workbooks write cells the same
+   way, in the company's own colors, and record a role against every
+   cell so the on screen preview can paint the same yellow inputs and
+   header bands the downloaded file has. */
+function makeWorkbookKit() {
   const wb = XLSX.utils.book_new();
   const specs = [];
-  const term = practiceTerm(deal);
-  const sc = computeScenarios(deal, m);
-  const inp = sc.inputs;
-  const hasLines = !!(m.series.cogs && m.series.opex);
   const NUMFMT = "#,##0.0;(#,##0.0)";
   const PCT = "0.0%";
   const MULT = '0.0"x"';
+  const PTS = '0.0" pts";(0.0)" pts"';
 
   const thin = { style: "thin", color: { rgb: "D9D9DD" } };
   const box = { top: thin, bottom: thin, left: thin, right: thin };
@@ -942,6 +939,21 @@ function buildModelWorkbook(deal, m) {
     XLSX.utils.book_append_sheet(wb, sh.ws, name);
     specs.push({ name, cols: (sh.ws["!cols"] || []).map((c) => c.wch), cells: sh.cells, maxR: sh.maxR, maxC: sh.maxC });
   }
+
+  return { wb, specs, ST, newSheet, put, section, finish, NUMFMT, PCT, MULT, PTS };
+}
+
+function buildModelWorkbook(deal, m) {
+  // Four linked sheets, banker style: yellow input cells drive every
+  // other number. Inputs (assumptions and multiples), Model
+  // (historicals plus a five year projection), Synergies (three
+  // scenarios), Valuation (multiple driven, with value creation).
+  const kit = makeWorkbookKit();
+  const { wb, specs, ST, newSheet, put, section, finish, NUMFMT, PCT, MULT } = kit;
+  const term = practiceTerm(deal);
+  const sc = computeScenarios(deal, m);
+  const inp = sc.inputs;
+  const hasLines = !!(m.series.cogs && m.series.opex);
 
   /* ---------------- Sheet 1: Inputs ---------------- */
   const I = newSheet([48, 14]);
@@ -1173,7 +1185,352 @@ function buildModelWorkbook(deal, m) {
   return { wb, specs };
 }
 
+/* ============ Diagnosis support model ============
+   When live filings drive the engagement the workbook stops being a
+   deal model and becomes the thing the memo leans on: the quarters
+   exactly as reported, then a forward scenario on the one line the
+   practice is actually arguing about.
+
+   The practice picks that line. An operations team argues about
+   margin, a strategy team about the growth rate, a deal team about
+   what the earnings base is worth, so the third tab is a different
+   model in each case rather than the same model relabeled.
+
+   Every anchor is the same quarter a year earlier, never a trailing
+   average, because a seasonal business compared against its own
+   trailing average produces a forecast that is mostly seasonality. */
+
+const DIAGNOSIS_SCENARIO = {
+  operations: {
+    tab: "Margin Scenario",
+    driver: "Operating margin",
+    title: (co) => `${co}: operating margin over the next four quarters`,
+    sub: "Does margin recover from here, hold where it is, or keep giving ground?",
+    blurb: "three margin paths for the next four reported quarters, and what each one is worth in operating profit.",
+  },
+  strategy: {
+    tab: "Growth Scenario",
+    driver: "Revenue growth, year over year",
+    title: (co) => `${co}: revenue trajectory over the next four quarters`,
+    sub: "Is this the position worth defending, and at what growth rate does it hold?",
+    blurb: "three growth paths for the next four reported quarters, and the revenue base each one leaves behind.",
+  },
+  financial: {
+    tab: "Earnings and Value",
+    driver: "Operating margin",
+    title: (co) => `${co}: earnings base and the value it supports`,
+    sub: "What is this earnings profile worth, and which assumption breaks the case first?",
+    blurb: "three earnings paths for the next four reported quarters, and the enterprise value each one supports across a multiple range.",
+  },
+};
+
+const TREND_TAB = "Quarterly Trend";
+
+function buildDiagnosisWorkbook(deal, a) {
+  const kit = makeWorkbookKit();
+  const { wb, specs, ST, newSheet, put, section, finish, NUMFMT, PCT, MULT, PTS } = kit;
+  const L = (c) => XLSX.utils.encode_col(c);
+  const co = a.company;
+  const spec = DIAGNOSIS_SCENARIO[a.practice] || DIAGNOSIS_SCENARIO.operations;
+  const qs = a.withMargin.slice(-8);
+  const last = qs[qs.length - 1];
+  const byKey = new Map(a.withMargin.map((q) => [q.key, q]));
+
+  // The four quarters that have not been reported yet.
+  const fq = [];
+  let fy = last.year, fqn = last.q;
+  for (let i = 0; i < 4; i++) {
+    fqn = fqn === 4 ? 1 : fqn + 1;
+    if (fqn === 1) fy++;
+    fq.push({ label: `Q${fqn} ${fy}`, anchor: byKey.get(`${fy - 1}Q${fqn}`) || null });
+  }
+
+  const pctOrNa = (v) => (v === null || v === undefined || !isFinite(v) ? "not reported" : (v * 100).toFixed(1) + "%");
+  const clampMargin = (v) => Math.max(-0.5, Math.min(0.6, v));
+
+  /* ---------------- Sheet 1: Read Me ---------------- */
+  const R = newSheet([2, 46, 16, 16, 16, 16, 16]);
+  let r = 1;
+  put(R, r, 1, "DEALDESK", { s: ST.note });
+  put(R, r++, 3, co, { s: ST.note });
+  put(R, r++, 1, `${co} ${a.lens.docTitle.toLowerCase()}: supporting model`, { s: ST.title });
+  r++;
+  put(R, r++, 1, "Purpose", { s: ST.labelBold });
+  put(R, r++, 1, `A simple, transparent model behind one question: ${a.question} Every figure in it traces to a filing.`, { s: ST.label });
+  r++;
+  put(R, r++, 1, "How to read it", { s: ST.labelBold });
+  put(R, r++, 1, "Yellow cells are inputs and assumptions you can change. Every other number is a live formula that recalculates from them.", { s: ST.label });
+  r++;
+  put(R, r++, 1, "Tabs", { s: ST.labelBold });
+  put(R, r++, 1, `1. ${TREND_TAB}. ${qs.length} quarters of revenue and operating income exactly as reported.`, { s: ST.label });
+  put(R, r++, 1, `2. ${spec.tab}. ${spec.blurb.charAt(0).toUpperCase() + spec.blurb.slice(1)}`, { s: ST.label });
+  r++;
+  put(R, r++, 1, "Key figures at a glance", { s: ST.labelBold });
+  put(R, r, 1, `${last.label} operating margin`, { s: ST.label });
+  put(R, r++, 2, last.margin === null ? "not reported" : last.margin, last.margin === null ? { s: ST.calc } : { z: PCT, s: ST.calc });
+  put(R, r, 1, "Trailing four quarter average operating margin", { s: ST.label });
+  put(R, r++, 2, a.trailingAvg === null ? "not reported" : a.trailingAvg, a.trailingAvg === null ? { s: ST.calc } : { z: PCT, s: ST.calc });
+  put(R, r, 1, "Change against the four quarters before that", { s: ST.label });
+  put(R, r++, 2, a.marginShift === null ? "not reported" : a.marginShift * 100, a.marginShift === null ? { s: ST.calc } : { z: PTS, s: ST.calc });
+  put(R, r, 1, "Revenue over the same comparison", { s: ST.label });
+  put(R, r++, 2, a.revShift === null ? "not reported" : a.revShift, a.revShift === null ? { s: ST.calc } : { z: PCT, s: ST.calc });
+  r++;
+  put(R, r++, 1, "The test", { s: ST.labelBold });
+  put(R, r++, 1, a.watch && a.watch.text ? a.watch.text : "The next reported quarter is the test of everything above.", { s: ST.label });
+  r++;
+  put(R, r++, 1, "Sources and caveats", { s: ST.labelBold });
+  put(R, r++, 1, a.source, { s: ST.note });
+  put(R, r++, 1, "Figures are company wide as filed. A business with divergent segments can hold a stable consolidated margin while one segment deteriorates, so segment detail would sharpen this read.", { s: ST.note });
+  finish(R, "Read Me");
+
+  /* ---------------- Sheet 2: Quarterly Trend ---------------- */
+  const T = newSheet([2, 16, 16, 20, 16, 16, 16]);
+  r = 1;
+  put(T, r, 1, "DEALDESK", { s: ST.note });
+  put(T, r++, 5, co, { s: ST.note });
+  put(T, r++, 1, `${co}: ${qs.length} quarter trend as reported`, { s: ST.title });
+  put(T, r++, 1, a.answer, { s: ST.note });
+  r++;
+  const tHead = ["Quarter", "Revenue ($M)", "Operating Income ($M)", "Operating Margin", "Revenue YoY", "Margin YoY"];
+  tHead.forEach((h, i) => put(T, r, 1 + i, h, { s: ST.yearA }));
+  r++;
+  const firstDataRow = r;
+  qs.forEach((q, i) => {
+    const row = firstDataRow + i;
+    const n = row + 1; // Excel is one based
+    const p = n - 4; // the same quarter a year earlier sits four rows up
+    put(T, row, 1, q.label + (q.derived ? " (derived)" : ""), { s: ST.label });
+    put(T, row, 2, q.revenue, { z: NUMFMT, s: ST.input });
+    if (q.opIncome === null || q.opIncome === undefined) put(T, row, 3, "", { s: ST.input });
+    else put(T, row, 3, q.opIncome, { z: NUMFMT, s: ST.input });
+    put(T, row, 4, null, { f: `IF(OR(C${n}=0,ISBLANK(D${n})),"",D${n}/C${n})`, v: q.margin === null ? 0 : q.margin, z: PCT, s: ST.calc });
+    if (i >= 4) {
+      put(T, row, 5, null, { f: `IF(OR(ISBLANK(C${p}),C${p}=0),"",C${n}/C${p}-1)`, v: q.revYoY === null ? 0 : q.revYoY, z: PCT, s: ST.calc });
+      put(T, row, 6, null, { f: `IF(OR(E${n}="",E${p}=""),"",(E${n}-E${p})*100)`, v: q.marginDelta === null ? 0 : q.marginDelta * 100, z: PTS, s: ST.calc });
+    } else {
+      put(T, row, 5, "", { s: ST.calc });
+      put(T, row, 6, "", { s: ST.calc });
+    }
+  });
+  r = firstDataRow + qs.length;
+  put(T, r++, 1, "Operating margin is operating income divided by revenue. Year over year compares each quarter with the same quarter a year earlier, which is the only comparison that holds seasonality constant, so the first four quarters have no comparator.", { s: ST.note });
+  if (qs.some((q) => q.derived))
+    put(T, r++, 1, "A quarter marked derived is the fiscal year total minus the three reported quarters, which is how a fourth quarter is read when a company reports it only inside the annual filing.", { s: ST.note });
+  finish(T, TREND_TAB);
+  const trendRow = (i) => firstDataRow + i + 1; // Excel row of the i th quarter
+  const lastTrendRow = trendRow(qs.length - 1);
+
+  /* ---------------- Sheet 3: the scenario, per practice ---------------- */
+  const S = newSheet([2, 30, 15, 15, 15, 15, 15, 15]);
+  r = 1;
+  put(S, r, 1, "DEALDESK", { s: ST.note });
+  put(S, r++, 6, co, { s: ST.note });
+  put(S, r++, 1, spec.title(co), { s: ST.title });
+  put(S, r++, 1, spec.sub, { s: ST.note });
+  r++;
+
+  // Header: the last reported quarter, then the four ahead, then the total
+  const headRow = r;
+  put(S, r, 1, spec.driver, { s: ST.yearA });
+  put(S, r, 2, `${last.label} (actual)`, { s: ST.yearA });
+  fq.forEach((f, i) => put(S, r, 3 + i, f.label, { s: ST.yearF }));
+  put(S, r, 7, "Next four", { s: ST.yearA });
+  r++;
+
+  const C_ACT = 2, C_F0 = 3, C_TOT = 7;
+  const ex = (row) => row + 1;
+  const anchorMargin = (i) => (fq[i].anchor && fq[i].anchor.margin !== null ? fq[i].anchor.margin : a.trailingAvg !== null ? a.trailingAvg : 0.08);
+  const anchorRev = (i) => (fq[i].anchor ? fq[i].anchor.revenue : last.revenue);
+  const shift = a.marginShift === null ? 0 : a.marginShift;
+  // Bear repeats the move of the last year, base holds at the year
+  // ago quarter, bull recovers by as much as the business gave up.
+  const deltas = { bear: Math.min(shift, -0.01), base: 0, bull: Math.max(Math.abs(shift), 0.01) };
+  const revTrend = a.revShift === null ? 0 : Math.max(-0.4, Math.min(0.4, a.revShift));
+
+  // Anchor row: the same quarter a year earlier, which every scenario
+  // is expressed as a move away from.
+  const anchorRow = r;
+  put(S, r, 1, "Same quarter a year earlier", { s: ST.labelBold });
+  put(S, r, C_ACT, "", { s: ST.calcBold });
+  fq.forEach((f, i) => {
+    const src = f.anchor ? trendRow(qs.indexOf(f.anchor)) : null;
+    if (a.practice === "strategy")
+      put(S, r, C_F0 + i, src ? null : anchorRev(i), src ? { f: `'${TREND_TAB}'!C${src}`, v: anchorRev(i), z: NUMFMT, s: ST.calcBold } : { z: NUMFMT, s: ST.calcBold });
+    else
+      put(S, r, C_F0 + i, src ? null : anchorMargin(i), src ? { f: `'${TREND_TAB}'!E${src}`, v: anchorMargin(i), z: PCT, s: ST.calcBold } : { z: PCT, s: ST.calcBold });
+  });
+  put(S, r, C_TOT, "", { s: ST.calcBold });
+  r++;
+  r++;
+
+  const scenarios = [
+    ["Bear", "bear", "the move of the last year repeats"],
+    ["Base", "base", "the business holds where it was a year ago"],
+    ["Bull", "bull", "the business recovers what it gave up"],
+  ];
+  const outcome = {}; // scenario key to the cells the summary table reads
+
+  if (a.practice === "strategy") {
+    // The line under test is the top line, so growth is the input and
+    // revenue is derived. Margin is held flat and stated, because a
+    // strategy read should not smuggle in an operations assumption.
+    put(S, r, 1, "Operating margin held flat at", { s: ST.label });
+    const heldMargin = a.trailingAvg !== null ? Math.round(clampMargin(a.trailingAvg) * 1000) / 1000 : 0.08;
+    const heldRef = `$${L(C_ACT)}$${ex(r)}`;
+    put(S, r++, C_ACT, heldMargin, { z: PCT, s: ST.input });
+    put(S, r++, 1, "Growth is the input here. Revenue follows from the year ago quarter, and operating profit follows from revenue at the margin above.", { s: ST.note });
+    r++;
+    for (const [label, key, note] of scenarios) {
+      put(S, r, 1, `${label} scenario: ${note}`, { s: ST.section });
+      for (let c = 2; c <= C_TOT; c++) put(S, r, c, "", { s: ST.section });
+      r++;
+      const gRow = r;
+      put(S, r, 1, "  Revenue growth, year over year", { s: ST.label });
+      put(S, r, C_ACT, null, { f: `'${TREND_TAB}'!F${lastTrendRow}`, v: last.revYoY === null ? 0 : last.revYoY, z: PCT, s: ST.calc });
+      const gSeed = { bear: Math.min(revTrend, -0.01), base: revTrend, bull: Math.max(revTrend + 0.03, 0.02) }[key];
+      fq.forEach((f, i) => put(S, r, C_F0 + i, Math.round(gSeed * 1000) / 1000, { z: PCT, s: ST.input }));
+      put(S, r++, C_TOT, "", { s: ST.calc });
+      const revRow = r;
+      put(S, r, 1, "  Revenue ($M)", { s: ST.label });
+      put(S, r, C_ACT, null, { f: `'${TREND_TAB}'!C${lastTrendRow}`, v: last.revenue, z: NUMFMT, s: ST.calc });
+      fq.forEach((_, i) => {
+        const c = L(C_F0 + i);
+        put(S, r, C_F0 + i, null, { f: `${c}${ex(anchorRow)}*(1+${c}${ex(gRow)})`, v: anchorRev(i) * (1 + gSeed), z: NUMFMT, s: ST.calc });
+      });
+      put(S, r, C_TOT, null, { f: `SUM(${L(C_F0)}${ex(r)}:${L(C_F0 + 3)}${ex(r)})`, v: 0, z: NUMFMT, s: ST.calcBold });
+      r++;
+      const profRow = r;
+      put(S, r, 1, "  Operating profit ($M) at the held margin", { s: ST.label });
+      put(S, r, C_ACT, "", { s: ST.calc });
+      fq.forEach((_, i) => {
+        const c = L(C_F0 + i);
+        put(S, r, C_F0 + i, null, { f: `${c}${ex(revRow)}*${heldRef}`, v: 0, z: NUMFMT, s: ST.calc });
+      });
+      put(S, r, C_TOT, null, { f: `SUM(${L(C_F0)}${ex(r)}:${L(C_F0 + 3)}${ex(r)})`, v: 0, z: NUMFMT, s: ST.calcBold });
+      r++;
+      const anchorTotal = `SUM(${L(C_F0)}${ex(anchorRow)}:${L(C_F0 + 3)}${ex(anchorRow)})`;
+      outcome[key] = {
+        primary: `${L(C_TOT)}${ex(revRow)}`,
+        secondary: `IF(${anchorTotal}=0,"",${L(C_TOT)}${ex(revRow)}/${anchorTotal}-1)`,
+        secondaryFmt: PCT,
+        profit: `${L(C_TOT)}${ex(profRow)}`,
+      };
+      r++;
+    }
+  } else {
+    // Operations and transaction work both argue about margin, so both
+    // hold revenue as the input and put margin under test.
+    const revRow = r;
+    put(S, r, 1, "Revenue ($M)", { s: ST.label });
+    put(S, r, C_ACT, null, { f: `'${TREND_TAB}'!C${lastTrendRow}`, v: last.revenue, z: NUMFMT, s: ST.calc });
+    fq.forEach((_, i) => put(S, r, C_F0 + i, Math.round(anchorRev(i) * (1 + revTrend) * 10) / 10, { z: NUMFMT, s: ST.input }));
+    put(S, r, C_TOT, null, { f: `SUM(${L(C_F0)}${ex(r)}:${L(C_F0 + 3)}${ex(r)})`, v: 0, z: NUMFMT, s: ST.calcBold });
+    r++;
+    put(S, r++, 1, `Revenue is seeded from the same quarter a year earlier, moved ${revTrend < 0 ? "down" : "up"} ${Math.abs(revTrend * 100).toFixed(1)} percent, which is the rate the last four quarters actually ran at. Change it and every scenario below recalculates.`, { s: ST.note });
+    r++;
+    for (const [label, key, note] of scenarios) {
+      put(S, r, 1, `${label} scenario: ${note}`, { s: ST.section });
+      for (let c = 2; c <= C_TOT; c++) put(S, r, c, "", { s: ST.section });
+      r++;
+      const mRow = r;
+      put(S, r, 1, "  Operating margin", { s: ST.label });
+      put(S, r, C_ACT, null, { f: `'${TREND_TAB}'!E${lastTrendRow}`, v: last.margin === null ? 0 : last.margin, z: PCT, s: ST.calc });
+      fq.forEach((_, i) => put(S, r, C_F0 + i, Math.round(clampMargin(anchorMargin(i) + deltas[key]) * 1000) / 1000, { z: PCT, s: ST.input }));
+      put(S, r++, C_TOT, null, { f: `IF(${L(C_TOT)}${ex(revRow)}=0,"",${L(C_TOT)}${ex(r)}/${L(C_TOT)}${ex(revRow)})`, v: 0, z: PCT, s: ST.calcBold });
+      const profRow = r;
+      put(S, r, 1, "  Operating profit ($M)", { s: ST.label });
+      put(S, r, C_ACT, "", { s: ST.calc });
+      fq.forEach((_, i) => {
+        const c = L(C_F0 + i);
+        put(S, r, C_F0 + i, null, { f: `${c}${ex(revRow)}*${c}${ex(mRow)}`, v: 0, z: NUMFMT, s: ST.calc });
+      });
+      put(S, r, C_TOT, null, { f: `SUM(${L(C_F0)}${ex(r)}:${L(C_F0 + 3)}${ex(r)})`, v: 0, z: NUMFMT, s: ST.calcBold });
+      r++;
+      outcome[key] = {
+        primary: `${L(C_TOT)}${ex(profRow)}`,
+        secondary: `${L(C_TOT)}${ex(mRow)}`,
+        secondaryFmt: PCT,
+        profit: `${L(C_TOT)}${ex(profRow)}`,
+      };
+      r++;
+    }
+  }
+
+  /* Reference points: the real quarters a reader should sanity check
+     the scenario against, so the assumptions are not floating free. */
+  put(S, r, 1, "REFERENCE POINTS, AS REPORTED", { s: ST.section });
+  for (let c = 2; c <= C_TOT; c++) put(S, r, c, "", { s: ST.section });
+  r++;
+  const refs = [
+    ["Trailing four quarter operating margin", a.trailingAvg, PCT],
+    ["The four quarters before that", a.priorAvg, PCT],
+    [a.peak ? `Best quarter on file, ${a.peak.label}` : "Best quarter on file", a.peak ? a.peak.margin : null, PCT],
+    [a.trough ? `Weakest quarter on file, ${a.trough.label}` : "Weakest quarter on file", a.trough ? a.trough.margin : null, PCT],
+  ];
+  for (const [labelText, val, fmt] of refs) {
+    put(S, r, 1, labelText, { s: ST.label });
+    if (val === null || val === undefined || !isFinite(val)) put(S, r++, C_ACT, "not reported", { s: ST.calc });
+    else put(S, r++, C_ACT, val, { z: fmt, s: ST.calc });
+  }
+  r++;
+
+  /* Outcome summary, the table someone reads first */
+  put(S, r, 1, "NEXT FOUR QUARTERS, BY SCENARIO", { s: ST.section });
+  for (let c = 2; c <= C_TOT; c++) put(S, r, c, "", { s: ST.section });
+  r++;
+  const isStrategy = a.practice === "strategy";
+  const isFinancial = a.practice === "financial";
+  put(S, r, 1, "Scenario", { s: ST.yearA });
+  put(S, r, 2, isStrategy ? "Revenue ($M)" : "Operating profit ($M)", { s: ST.yearA });
+  put(S, r, 3, isStrategy ? "Growth vs prior year" : "Blended margin", { s: ST.yearA });
+  if (isFinancial) {
+    put(S, r, 4, "Implied value, low", { s: ST.yearA });
+    put(S, r, 5, "Implied value, mid", { s: ST.yearA });
+    put(S, r, 6, "Implied value, high", { s: ST.yearA });
+  }
+  r++;
+  const summaryStart = r;
+  // The multiple range sits below the summary it feeds, so its row is
+  // known before the summary formulas that point at it are written:
+  // three scenario rows, a blank, a heading, then the multiples.
+  const multRow = summaryStart + 5;
+  for (const [label, key] of scenarios) {
+    const o = outcome[key];
+    put(S, r, 1, label, { s: ST.label });
+    put(S, r, 2, null, { f: o.primary, v: 0, z: NUMFMT, s: ST.calc });
+    put(S, r, 3, null, { f: o.secondary, v: 0, z: o.secondaryFmt, s: ST.calc });
+    if (isFinancial) {
+      [0, 1, 2].forEach((i) => {
+        const mc = L(2 + i);
+        put(S, r, 4 + i, null, { f: `${o.profit}*${mc}$${ex(multRow)}`, v: 0, z: NUMFMT, s: ST.calc });
+      });
+    }
+    r++;
+  }
+  if (isFinancial) {
+    r++;
+    put(S, r, 1, "EBIT multiple applied to the four quarter run rate", { s: ST.labelBold });
+    r++;
+    put(S, r, 1, "Multiple", { s: ST.label });
+    [8, 11, 14].forEach((v, i) => put(S, r, 2 + i, v, { z: MULT, s: ST.input }));
+    r++;
+    put(S, r++, 1, "Implied value is the four quarter operating profit above multiplied by the chosen EBIT multiple. It is arithmetic, not a valuation: the multiple is an input because the right one is a judgment about this business, not a number a spreadsheet can find.", { s: ST.note });
+  }
+  r++;
+  put(S, r++, 1, a.watch && a.watch.text ? a.watch.text : "The next reported quarter is the test.", { s: ST.note });
+  put(S, r++, 1, a.source, { s: ST.note });
+  finish(S, spec.tab);
+
+  return { wb, specs };
+}
+
 function generateModelXlsx(deal, m) {
+  if (deal.analysis) {
+    const { wb } = buildDiagnosisWorkbook(deal, deal.analysis);
+    return new Blob([XLSX.write(wb, { bookType: "xlsx", type: "array" })], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+  }
   const { wb } = buildModelWorkbook(deal, m);
   const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
   return new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
@@ -1181,6 +1538,7 @@ function generateModelXlsx(deal, m) {
 
 // Cell level description of the workbook, for the on screen preview
 function modelSpecs(deal, m) {
+  if (deal.analysis) return buildDiagnosisWorkbook(deal, deal.analysis).specs;
   return buildModelWorkbook(deal, m).specs;
 }
 

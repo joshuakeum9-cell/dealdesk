@@ -42,6 +42,15 @@ function titleCase(name) {
     .join(" ");
 }
 
+// Filing dates arrive ISO. A document reads better with the date
+// spelled out, and it keeps hyphens out of the prose.
+function longDate(iso) {
+  const d = new Date(String(iso) + "T00:00:00Z");
+  if (isNaN(d)) return String(iso);
+  const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  return `${months[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+}
+
 function money(m) {
   const a = Math.abs(m);
   if (a >= 1000) return (m < 0 ? "-$" : "$") + (a / 1000).toFixed(1) + "B";
@@ -332,7 +341,7 @@ function analyzeFilings(profile, practice) {
     marginShift,
     company: co,
     source: profile.asOf
-      ? `Source: ${profile.company.name} ${profile.asOf.form} filed ${profile.asOf.filed} and prior filings, via SEC EDGAR. Latest reported quarter: ${profile.asOf.period}.`
+      ? `Source: ${co} ${profile.asOf.form} filed ${longDate(profile.asOf.filed)} and prior filings, via SEC EDGAR. Latest reported quarter: ${profile.asOf.period}.`
       : "Source: SEC EDGAR company filings.",
   };
 }
