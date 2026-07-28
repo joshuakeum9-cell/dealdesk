@@ -1312,7 +1312,9 @@ async function generateDiagnosisMemoDocx(deal, m) {
   const children = [
     para(run("DEALDESK  /  OPERATIONAL DIAGNOSIS", { size: 18, bold: true, color: THEME.accent }), { after: 60 }),
     para(run(a.company.toUpperCase(), { size: 20, bold: true, color: THEME.gray }), { after: 100 }),
-    para(run(`${a.company}: ${a.question.replace(/^Is |^Can |^Where /, (s) => s)}`, { serif: true, size: 52, color: THEME.ink }), { after: 100 }),
+    // The question already names the company; repeating it reads as a
+    // template seam.
+    para(run(a.question, { serif: true, size: 52, color: THEME.ink }), { after: 100 }),
     para(
       run(
         `Operational diagnosis prepared from public filings   ·   Latest reported quarter: ${profile.asOf ? profile.asOf.period : "n/a"}`,
