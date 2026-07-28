@@ -954,7 +954,7 @@ function previewOutput(key) {
               g.items.map((s) => `<li><strong>${s.name}</strong>: ${s.rationale}</li>`).join("") +
               `</ul>`
           )
-          .join("") + `<h4>Plus</h4><ul><li>Cover, summary signpost slide, and an achievability matrix appendix</li></ul>`
+          .join("") + `<h4>Plus</h4><ul><li>A cover slide in the client colors, ahead of the three slide loop</li></ul>`
       );
     },
     model: () => {

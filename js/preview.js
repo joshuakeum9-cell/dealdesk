@@ -330,26 +330,8 @@ function previewDeckHTML(deal, m) {
     slides.push(pvSlide(sl));
   });
 
-  // Matrix slide
-  let mx = pvFurniture(deal, { kicker: c.matrix.kicker, title: c.matrix.title, source: c.srcLine });
-  const px = 1.1, py = 1.55, pw = 7.0, ph = 4.5;
-  mx += pvSlideBox(px, py, pw, ph, "", `background:#FAFBFC;border:1px solid ${pvC(THEME.rule)}`);
-  mx += pvSlideBox(px + pw / 2, py, pw / 2, ph / 2, "", `background:${pvC(THEME.fillAccent)}`);
-  mx += pvSlideBox(px + pw / 2, py + 0.05, pw / 2 - 0.1, 0.3, "Do first", `color:${pvC(THEME.accent)};font-weight:700;font-size:${pvPt(10, S)};text-align:right`);
-  mx += pvSlideBox(px, py + ph + 0.1, pw, 0.3, "Ease of capture", `color:${pvC(THEME.gray)};font-size:${pvPt(11, S)};text-align:center`);
-  mx += pvSlideBox(px - 1.0, py + ph / 2 - 0.2, 1.7, 0.4, "Value impact", `color:${pvC(THEME.gray)};font-size:${pvPt(11, S)};text-align:center`);
-  const frac = { High: 0.8, Medium: 0.5, Low: 0.2 };
-  const seen = {};
-  c.all.forEach((it, i) => {
-    const key = it.impact + it.ease;
-    const bump = (seen[key] = (seen[key] || 0) + 1) - 1;
-    const cx = px + frac[it.ease] * pw + bump * 0.55 - 0.21;
-    const cy = py + (1 - frac[it.impact]) * ph - 0.21;
-    mx += pvSlideBox(cx, cy, 0.42, 0.42, `<div style="width:100%;height:100%;border-radius:50%;background:${pvC(it.gi === 0 ? THEME.accent2 : THEME.accent)};color:${pvC(THEME.onAccent)};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:${pvPt(12, S)}">${i + 1}</div>`);
-  });
-  mx += pvSlideBox(8.55, 1.55, 4.3, 0.3, "Opportunities", `color:${pvC(THEME.ink)};font-weight:700;font-size:${pvPt(11, S)}`);
-  mx += pvSlideBox(8.55, 1.9, 4.3, 4.2, c.all.map((it, i) => `<div style="margin-bottom:4px">${i + 1}. ${pvEsc(it.name)}</div>`).join(""), `color:#404850;font-size:${pvPt(fitSizeLines(c.all.map((it, i) => `${i + 1}. ${it.name}`), 4.3, 4.2, 11), S)}`);
-  slides.push(pvSlide(mx));
+  // The appendix matrix was removed to keep the deck to the cover
+  // plus the three slide loop the brief describes.
 
   return `<div class="pv-deck">${slides.map((s, i) => `<div class="pv-slide-wrap"><div class="pv-slide-no">Slide ${i + 1}</div>${s}</div>`).join("")}</div>`;
 }

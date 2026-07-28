@@ -833,48 +833,13 @@ async function generateSynergyPptx(deal, m) {
     });
   });
 
-  /* --- Achievability 2x2 matrix --- */
-  s = pptx.addSlide({ masterName: "CONTENT" });
-  const ranked = content.ranked;
-  addFurniture(s, {
-    kicker: content.matrix.kicker,
-    title: content.matrix.title,
-    source: srcLine,
-  });
-  const px = 1.1, py = 1.55, pw = 7.0, ph = 4.5;
-  // Quadrant fills: highlight top-right (do first)
-  s.addShape("rect", { x: px, y: py, w: pw, h: ph, fill: { color: "FAFBFC" }, line: { color: THEME.rule, pt: 0.75 } });
-  s.addShape("rect", { x: px + pw / 2, y: py, w: pw / 2, h: ph / 2, fill: { color: THEME.fillAccent }, line: { type: "none" } });
-  s.addShape("line", { x: px + pw / 2, y: py, w: 0, h: ph, line: { color: THEME.rule, pt: 0.75, dashType: "dash" } });
-  s.addShape("line", { x: px, y: py + ph / 2, w: pw, h: 0, line: { color: THEME.rule, pt: 0.75, dashType: "dash" } });
-  s.addText("Do first", { x: px + pw / 2, y: py + 0.05, w: pw / 2 - 0.1, h: 0.3, align: "right", fontFace: THEME.sans, fontSize: 10, bold: true, color: THEME.accent });
-  s.addText("Value impact", { x: px - 0.95, y: py + ph / 2 - 0.2, w: 1.7, h: 0.4, rotate: 270, fontFace: THEME.sans, fontSize: 11, color: THEME.gray, align: "center" });
-  s.addText("Ease of capture", { x: px, y: py + ph + 0.1, w: pw, h: 0.3, align: "center", fontFace: THEME.sans, fontSize: 11, color: THEME.gray });
-  const frac = { High: 0.8, Medium: 0.5, Low: 0.2 };
-  const seen = {};
-  all.forEach((it, i) => {
-    const key = it.impact + it.ease;
-    const bump = (seen[key] = (seen[key] || 0) + 1) - 1;
-    const cx = px + frac[it.ease] * pw + bump * 0.55 - 0.21;
-    const cy = py + (1 - frac[it.impact]) * ph - 0.21;
-    s.addText(String(i + 1), {
-      shape: "ellipse", x: cx, y: cy, w: 0.42, h: 0.42,
-      fill: { color: it.gi === 0 ? THEME.accent2 : THEME.accent },
-      align: "center", valign: "middle", fontFace: THEME.sans, fontSize: 12, bold: true, color: THEME.onAccent,
-    });
-  });
-  // Legend list, right column
-  s.addText("Opportunities", { x: 8.55, y: 1.55, w: 4.3, h: 0.3, fontFace: THEME.sans, fontSize: 11, bold: true, color: THEME.ink });
-  const legend = all.map((it, i) => `${i + 1}. ${it.name}`);
-  const legendSize = fitSizeLines(legend, 4.3, 4.2, 11);
-  s.addText(
-    legend.map((t) => ({ text: t, options: { breakLine: true, color: "404850" } })),
-    { x: 8.55, y: 1.9, w: 4.3, h: 4.2, fontFace: THEME.sans, fontSize: legendSize, lineSpacing: legendSize * 1.8, valign: "top", fit: "shrink" }
-  );
-  s.addText([
-    { text: "● ", options: { color: THEME.accent2 } }, { text: groups[0].label + "   ", options: { color: THEME.gray } },
-    { text: "● ", options: { color: THEME.accent } }, { text: groups[1].label, options: { color: THEME.gray } },
-  ], { x: 8.55, y: 5.7, w: 4, h: 0.3, fontFace: THEME.sans, fontSize: 10 });
+  /* Task 3 asks for a three slide loop: a summary that signposts, then
+     the two slides that expand it in the same order. That loop is
+     slides 2 to 4 here, behind a cover that carries the client's logo
+     and colors. An achievability matrix used to sit at the end as an
+     appendix, which pushed the deck to five slides and past what the
+     brief asks for, so it was removed. The scoring that drove it still
+     ranks the opportunities that reach the slides. */
 
   return pptx.write({ outputType: "blob" });
 }
