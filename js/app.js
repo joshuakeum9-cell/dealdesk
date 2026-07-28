@@ -28,7 +28,7 @@ function refreshAnalysisForPractice() {
     state.analysis = analyzeFilings(state.filings, currentPractice());
     const st = document.getElementById("lookup-status");
     if (st && st.classList.contains("ok") && state.analysis) {
-      st.textContent = `${state.filings.quarters.length} quarters from SEC filings through ${state.filings.asOf.period}. Diagnosis: ${state.analysis.question}`;
+      st.textContent = `${state.filings.quarters.length} quarters from SEC filings through ${state.filings.asOf.period}. ${heroFactLine(state.analysis)}`;
     }
   }
 }
@@ -44,7 +44,17 @@ async function loadFilings(name, say) {
       const series = { revenue: profile.annual.map((a) => a.revenue) };
       if (profile.annual.every((a) => a.cost !== null)) series.cogs = profile.annual.map((a) => a.cost);
       if (profile.annual.every((a) => a.opex !== null)) series.opex = profile.annual.map((a) => a.opex);
-      state.financials = { years: profile.annual.map((a) => a.year), series, source: "filings" };
+      // Task 1 asks for profitability trends, not just revenue. Plenty
+      // of filers report operating income without breaking out cost of
+      // revenue and SG&A, which would otherwise leave the financial
+      // summary as a single revenue line. The template allows EBIT in
+      // place of EBITDA, so the figure is used and labeled honestly.
+      let profitLabel;
+      if (!series.cogs && profile.annual.every((a) => a.opIncome !== null)) {
+        series.ebitda = profile.annual.map((a) => a.opIncome);
+        profitLabel = "Operating income";
+      }
+      state.financials = { years: profile.annual.map((a) => a.year), series, source: "filings", profitLabel };
     }
     return profile;
   } catch (e) {
@@ -73,7 +83,7 @@ async function runLookup() {
         const a = state.analysis;
         addFileChip("financials", `SEC filings: ${filings.quarters.length} quarters through ${filings.asOf.period}`, "applied");
         status.className = "lookup-status ok";
-        status.textContent = `${a.company}: ${filings.quarters.length} quarters from SEC filings through ${filings.asOf.period}. Diagnosis: ${a.question}`;
+        status.textContent = `${a.company}: ${filings.quarters.length} quarters from SEC filings through ${filings.asOf.period}. ${heroFactLine(a)}`;
         const industryEl0 = document.getElementById("f-industry");
         if (!industryEl0.value.trim() && filings.company.sic) industryEl0.value = filings.company.sic;
         const nameEl = document.getElementById("f-company");
@@ -277,6 +287,19 @@ function initCompanyField() {
   );
 }
 
+// The headline the business summary is built on, straight from the
+// filings: what the company earns, which way it is moving, and what it
+// keeps. Every figure here reappears in the financial summary table.
+function heroFactLine(a) {
+  const last = a.withMargin[a.withMargin.length - 1] || a.quarters[a.quarters.length - 1];
+  const parts = [`${last.label} revenue of ${fmtM(last.revenue)}`];
+  if (last.revYoY !== null && last.revYoY !== undefined)
+    parts.push(`${last.revYoY < 0 ? "down" : "up"} ${fmtPct(Math.abs(last.revYoY))} against the same quarter a year earlier`);
+  if (last.margin !== null && last.margin !== undefined)
+    parts.push(`at a ${fmtPct(last.margin)} operating margin`);
+  return parts.join(", ") + ".";
+}
+
 // Landing page lookup: the fastest possible path to a real document
 async function heroLookup() {
   const name = document.getElementById("hero-company").value.trim();
@@ -288,11 +311,14 @@ async function heroLookup() {
     const filings = await loadFilings(name, (s) => { out.textContent = s + "..."; });
     if (filings && state.analysis) {
       const a = state.analysis;
+      // Preview what the business summary will actually open with, not
+      // a verdict. The point of this box is to prove the numbers are
+      // real and the company's own, before anyone fills in a form.
       out.className = "hero-result ok";
       out.innerHTML =
-        `<strong>${a.question}</strong>` +
-        `<span class="hero-verdict">${a.answer}</span>` +
-        `<span class="hero-src">${filings.quarters.length} quarters from ${a.company} SEC filings, latest ${filings.asOf.period} (${filings.asOf.form} filed ${filings.asOf.filed}).</span>` +
+        `<strong>${a.company}</strong>` +
+        `<span class="hero-verdict">${heroFactLine(a)}</span>` +
+        `<span class="hero-src">${filings.quarters.length} quarters from ${a.company} SEC filings, latest ${filings.asOf.period} (${filings.asOf.form} filed ${longDate(filings.asOf.filed)}).</span>` +
         `<button class="btn btn-sm btn-primary hero-go" onclick="startFromHero()">Build the documents</button>`;
       // Registered as the in flight lookup so generation waits for the
       // description and the brand colors instead of racing them.
@@ -338,7 +364,7 @@ function startFromHero() {
   if (state.filings) {
     const st = document.getElementById("lookup-status");
     st.className = "lookup-status ok";
-    st.textContent = `${state.filings.quarters.length} quarters from SEC filings through ${state.filings.asOf.period}. Diagnosis: ${state.analysis.question}`;
+    st.textContent = `${state.filings.quarters.length} quarters from SEC filings through ${state.filings.asOf.period}. ${heroFactLine(state.analysis)}`;
     const ind = document.getElementById("f-industry");
     if (!ind.value.trim() && state.filings.company.sic) ind.value = state.filings.company.sic;
     addFileChip("financials", `SEC filings: ${state.filings.quarters.length} quarters through ${state.filings.asOf.period}`, "applied");
@@ -723,22 +749,13 @@ async function runGeneration() {
   setTheme(currentTheme());
 
   const P = practiceOf(state.deal);
-  // Live filings produce a diagnosis rather than a brief, so the cards
-  // have to name what was actually built. Promising a synergy deck and
-  // handing over an operating review is the kind of small dishonesty
-  // that makes someone distrust the rest of the package.
-  const diag = !!state.analysis;
+  // The cards name the four simulation tasks. Live filings change what
+  // is inside each document, never which document it is.
   const cardText = {
-    summary: diag
-      ? ["Diagnosis Memo", "Answer up front, then situation, complication, diagnosis, and the recommendation"]
-      : ["Business Summary", "Company overview, financial profile, market position, key risks"],
-    guide: [guideTitleOf(state.deal), "Structured management interview questions by workstream"],
-    synergy: diag
-      ? ["Diagnosis Presentation", "The argument in eight slides, with the reported quarters charted"]
-      : [P.deckShort, "Synergy hypotheses ranked by impact and achievability"],
-    model: diag
-      ? ["Supporting Model + Email Summary", `The reported quarters and a bear, base, and bull ${state.analysis.practice === "strategy" ? "growth" : "margin"} scenario, plus an answer first email draft`]
-      : ["Excel Model + Email Summary", "Scenario model with labeled inputs, plus an answer first email draft"],
+    summary: ["Business Summary", "Company overview, financial summary, key people, key products, recent news"],
+    guide: [guideTitleOf(state.deal), "15 to 20 numbered questions in titled sections, with space for answers"],
+    synergy: [P.deckShort, "Three slides: a summary that signposts, then the same points expanded in order"],
+    model: ["Excel Model + Email Summary", "Conservative, midpoint, and aggressive scenarios off labeled input cells, plus an answer first email"],
   };
   for (const [key, [title, desc]] of Object.entries(cardText)) {
     const card = document.querySelector(`.output-card[data-output="${key}"]`);
@@ -815,17 +832,17 @@ function selectedOutputs() {
 }
 
 // One place that knows how to build each deliverable
+/* The four deliverables follow the structure of the PwC simulation
+   tasks, always. Live filing data raises the depth of what goes inside
+   them, with real quarters, real charts, and computed figures, but it
+   never changes the shape of the document: Task 1 is a business
+   summary, Task 3 is the three slide loop, Task 4 is the simple model
+   with scenarios. The diagnosis generators stay in the file for
+   reference but are deliberately not routed. */
 async function buildOutput(key, deal, m) {
-  // With live filing data the summary becomes a diagnosis memo, which
-  // answers a real question instead of describing the company.
-  if (key === "summary") {
-    return deal.analysis ? generateDiagnosisMemoDocx(deal, m) : generateSummaryDocx(deal, m);
-  }
+  if (key === "summary") return generateSummaryDocx(deal, m);
   if (key === "guide") return generateGuideDocx(deal, m);
-  if (key === "synergy") {
-    // With live filings the deck follows the diagnosis narrative
-    return deal.analysis ? generateDiagnosisDeckPptx(deal, m) : generateSynergyPptx(deal, m);
-  }
+  if (key === "synergy") return generateSynergyPptx(deal, m);
   if (key === "model") {
     return { model: generateModelXlsx(deal, m), email: await generateEmailDocx(deal, m) };
   }
@@ -941,17 +958,6 @@ function previewOutput(key) {
       );
     },
     model: () => {
-      if (deal.analysis) {
-        const a = deal.analysis;
-        const specs = modelSpecs(deal, m);
-        const scenarioTab = specs[2] ? specs[2].name : "Scenario";
-        const line = a.practice === "strategy" ? "the growth rate" : a.practice === "financial" ? "what the earnings base is worth" : "operating margin";
-        return `<h4>Workbook structure</h4>
-          <ul><li><strong>${specs[0].name}</strong>: the question, how to read the model, the headline figures as live links, and the sources</li>
-          <li><strong>${specs[1].name}</strong>: ${a.withMargin.length} quarters of revenue and operating income exactly as filed, with margin and year over year computed</li>
-          <li><strong>${scenarioTab}</strong>: bear, base, and bull paths for the next four quarters, testing ${line}, each anchored to the same quarter a year earlier</li></ul>
-          <h4>Email summary</h4><ul><li><strong>Subject:</strong> ${email.subject}</li><li>${email.answer}</li></ul>`;
-      }
       const sc = computeScenarios(deal, m);
       const term = practiceTerm(deal);
       return `<h4>Workbook structure</h4>

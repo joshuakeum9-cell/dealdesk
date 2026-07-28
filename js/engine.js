@@ -139,6 +139,10 @@ function computeMetrics(fin) {
     years,
     series,
     source: fin.source,
+    // Filers that report operating income but not the cost lines get an
+    // EBIT series here, which the template permits, so the row has to
+    // say what it actually is.
+    profitLabel: fin.profitLabel || "EBITDA",
     firstYear: years[0],
     lastYear: years[last],
     revenueLatest: rev[last],
@@ -804,10 +808,11 @@ function buildFinancialsTable(m) {
   ]);
   if (m.series.cogs) rows.push(["COGS", ...m.series.cogs.map((v) => fN(-v)), fN(-proj(m.series.cogs))]);
   if (m.series.opex) rows.push(["SG&A / Opex", ...m.series.opex.map((v) => fN(-v)), fN(-proj(m.series.opex))]);
-  const totalRow = m.ebitdaSeries ? ["EBITDA", ...m.ebitdaSeries.map(fN), fN(proj(m.ebitdaSeries))] : null;
+  const pl = m.profitLabel || "EBITDA";
+  const totalRow = m.ebitdaSeries ? [pl, ...m.ebitdaSeries.map(fN), fN(proj(m.ebitdaSeries))] : null;
   const marginRow = m.ebitdaSeries
     ? [
-        "EBITDA margin (%)",
+        `${pl} margin (%)`,
         ...m.ebitdaSeries.map((e, i) => fmtPct(e / m.series.revenue[i])),
         fmtPct(proj(m.ebitdaSeries) / proj(m.series.revenue)),
       ]

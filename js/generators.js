@@ -1596,12 +1596,6 @@ function buildDiagnosisWorkbook(deal, a) {
 }
 
 function generateModelXlsx(deal, m) {
-  if (deal.analysis) {
-    const { wb } = buildDiagnosisWorkbook(deal, deal.analysis);
-    return new Blob([XLSX.write(wb, { bookType: "xlsx", type: "array" })], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    });
-  }
   const { wb } = buildModelWorkbook(deal, m);
   const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
   return new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
@@ -1609,7 +1603,6 @@ function generateModelXlsx(deal, m) {
 
 // Cell level description of the workbook, for the on screen preview
 function modelSpecs(deal, m) {
-  if (deal.analysis) return buildDiagnosisWorkbook(deal, deal.analysis).specs;
   return buildModelWorkbook(deal, m).specs;
 }
 
