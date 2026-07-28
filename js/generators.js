@@ -747,7 +747,7 @@ async function generateSynergyPptx(deal, m) {
     objects: [
       { text: { text: `${dealCode(deal)} | Private and confidential`, options: { x: MARGIN, y: 7.24, w: 6, h: 0.22, fontFace: THEME.sans, fontSize: 8, color: THEME.grayLight } } },
     ],
-    slideNumber: { x: 12.55, y: 7.22, fontFace: THEME.sans, fontSize: 9, color: THEME.gray },
+    slideNumber: { x: 12.15, y: 7.08, fontFace: THEME.sans, fontSize: 9, color: THEME.gray },
   });
 
   /* --- Title slide: full-bleed ink, white serif title --- */
@@ -1355,4 +1355,224 @@ async function generateDiagnosisMemoDocx(deal, m) {
     para(run(a.source, { size: 16, color: THEME.gray }), { before: 300 }),
   ];
   return packDocx(deal, children);
+}
+
+/* ================================================================
+   Diagnosis deck (.pptx)
+   The narrative arc of an operating review: cover, executive summary,
+   situation, complication, the quarterly evidence, recommendation,
+   risks and triggers, bottom line. Built from the live analysis, so
+   the argument on the slides is the argument in the memo.
+   ================================================================ */
+
+// Three headline figures, the way a situation slide carries them
+function statCards(slide, cards, y) {
+  const w = (SLIDE_W - 2 * MARGIN - 0.6) / cards.length;
+  cards.forEach((c, i) => {
+    const x = MARGIN + i * (w + 0.3);
+    slide.addShape("rect", { x, y, w, h: 1.75, fill: { color: THEME.fill }, line: { type: "none" } });
+    slide.addShape("rect", { x, y, w: 0.06, h: 1.75, fill: { color: THEME.accent }, line: { type: "none" } });
+    slide.addText(c.value, {
+      x: x + 0.22, y: y + 0.12, w: w - 0.4, h: 0.62,
+      fontFace: THEME.serif, fontSize: fitSize(c.value, w - 0.4, 0.62, 30),
+      bold: true, color: THEME.ink, valign: "middle",
+    });
+    slide.addText(c.label, {
+      x: x + 0.22, y: y + 0.76, w: w - 0.4, h: 0.85,
+      fontFace: THEME.sans, fontSize: fitSize(c.label, w - 0.4, 0.85, 11.5),
+      color: "404850", valign: "top",
+    });
+  });
+}
+
+// Quarterly revenue and margin, the series the diagnosis rests on
+function addQuarterCharts(slide, a) {
+  const qs = a.withMargin.slice(-8);
+  const labels = qs.map((q) => q.label.replace(" 20", " "));
+  const big = qs.some((q) => q.revenue >= 10000);
+  const div = big ? 1000 : 1;
+  const CX = 0.45, CW = SLIDE_W - 2 * MARGIN;
+  const axis = {
+    valAxisHidden: true, valGridLine: { style: "none" }, catAxisLineShow: false,
+    catAxisLabelFontFace: THEME.sans, catAxisLabelFontSize: 9, catAxisLabelColor: THEME.gray,
+    showLegend: false, showTitle: false,
+    dataLabelFontFace: THEME.sans, dataLabelFontSize: 8, dataLabelColor: "404850",
+  };
+  slide.addText(`REVENUE, ${big ? "$B" : "$M"}`, {
+    x: CX, y: 1.35, w: CW / 2 - 0.2, h: 0.24,
+    fontFace: THEME.sans, fontSize: 9.5, bold: true, color: THEME.gray, charSpacing: 1,
+  });
+  slide.addChart("bar",
+    [{ name: "Revenue", labels, values: qs.map((q) => +(q.revenue / div).toFixed(1)) }],
+    { x: CX, y: 1.6, w: CW / 2 - 0.2, h: 3.1, barDir: "col", barGapWidthPct: 45,
+      chartColors: [THEME.accent], showValue: true, dataLabelPosition: "outEnd", ...axis });
+
+  slide.addText("OPERATING MARGIN, %", {
+    x: CX + CW / 2 + 0.2, y: 1.35, w: CW / 2 - 0.2, h: 0.24,
+    fontFace: THEME.sans, fontSize: 9.5, bold: true, color: THEME.gray, charSpacing: 1,
+  });
+  slide.addChart("line",
+    [{ name: "Margin", labels, values: qs.map((q) => +(q.margin * 100).toFixed(1)) }],
+    { x: CX + CW / 2 + 0.2, y: 1.6, w: CW / 2 - 0.2, h: 3.1,
+      chartColors: [THEME.accent2], lineSize: 2.5, lineSmooth: false,
+      lineDataSymbol: "circle", lineDataSymbolSize: 6,
+      showValue: true, dataLabelPosition: "t", ...axis });
+}
+
+async function generateDiagnosisDeckPptx(deal, m) {
+  const a = deal.analysis;
+  const profile = deal.filings;
+  const n = buildMemoNarrative(a, profile);
+  const src = a.source.replace(/^Source: /, "Source: ");
+
+  const pptx = new PptxGenJS();
+  pptx.defineLayout({ name: "DD_WIDE", width: SLIDE_W, height: SLIDE_H });
+  pptx.layout = "DD_WIDE";
+  pptx.defineSlideMaster({
+    title: "CONTENT",
+    background: { color: "FFFFFF" },
+    objects: [
+      { text: { text: `${a.company}  ·  ${a.lens.docTitle}`, options: { x: MARGIN, y: 7.24, w: 7, h: 0.22, fontFace: THEME.sans, fontSize: 8, color: THEME.grayLight } } },
+    ],
+    slideNumber: { x: 12.15, y: 7.08, fontFace: THEME.sans, fontSize: 9, color: THEME.gray },
+  });
+
+  const lm = a.withMargin[a.withMargin.length - 1];
+  const first = a.withMargin[0];
+  const kick = (s, text, num) =>
+    s.addText(`${text.toUpperCase()}${num ? "  /  " + num : ""}`, {
+      x: MARGIN, y: 0.18, w: 9, h: 0.28,
+      fontFace: THEME.sans, fontSize: 10, bold: true, color: THEME.accent, charSpacing: 2,
+    });
+  const title = (s, text, y) =>
+    s.addText(text, {
+      x: MARGIN, y: y || 0.5, w: SLIDE_W - 2 * MARGIN, h: 0.9,
+      fontFace: THEME.serif, fontSize: fitSize(text, SLIDE_W - 2 * MARGIN, 0.9, 26),
+      color: THEME.ink, valign: "top",
+    });
+  const srcLine = (s) =>
+    s.addText(src, { x: MARGIN, y: 7.02, w: 10, h: 0.25, fontFace: THEME.sans, fontSize: 8, color: THEME.gray });
+
+  /* 1. Cover */
+  let s = pptx.addSlide();
+  s.background = { color: THEME.ink };
+  s.addText(`${a.lens.kicker}`, { x: 0.6, y: 1.9, w: 11, h: 0.4, fontFace: THEME.sans, fontSize: 12, bold: true, color: THEME.accent, charSpacing: 3 });
+  s.addText(a.question, { x: 0.6, y: 2.35, w: 12, h: 2.0, fontFace: THEME.serif, fontSize: fitSize(a.question, 12, 2.0, 34), color: THEME.onInk, valign: "top" });
+  s.addText(`${a.company}  ·  ${todayLabel()}`, { x: 0.6, y: 4.5, w: 11, h: 0.4, fontFace: THEME.sans, fontSize: 13, color: "B8C2CC" });
+  s.addText(
+    `Prepared from public filings. Latest reported quarter ${profile.asOf ? profile.asOf.period : "n/a"}${profile.asOf ? ` (${profile.asOf.form} filed ${profile.asOf.filed})` : ""}.`,
+    { x: 0.6, y: 6.85, w: 11.5, h: 0.35, fontFace: THEME.sans, fontSize: 9, color: "8A97A3" }
+  );
+
+  /* 2. Executive summary */
+  s = pptx.addSlide({ masterName: "CONTENT" });
+  kick(s, "Executive summary", "02");
+  // A verdict like "Not yet." is the answer, not a slide title. Use the
+  // first sentence that actually carries the reasoning.
+  const summaryTitle = (() => {
+    const parts = a.answer.split(". ").map((p) => p.trim()).filter(Boolean);
+    const substantive = parts.find((p) => p.length > 40) || parts[0];
+    const verdict = parts[0].length <= 24 ? parts[0].replace(/\.$/, "") + ": " : "";
+    return (verdict + substantive).replace(/\.$/, "") + ".";
+  })();
+  title(s, summaryTitle);
+  a.findings.slice(0, 4).forEach((f, i) => {
+    const y = 1.6 + i * 1.2;
+    s.addText(String(i + 1).padStart(2, "0"), {
+      x: MARGIN, y, w: 0.5, h: 0.4, fontFace: THEME.sans, fontSize: 13, bold: true, color: THEME.accent,
+    });
+    s.addText(
+      [
+        { text: f.lead + ".  ", options: { bold: true, color: THEME.ink } },
+        { text: f.text, options: { color: "404850" } },
+      ],
+      { x: 1.0, y, w: 11.8, h: 1.05, fontFace: THEME.sans, fontSize: 12.5, valign: "top", lineSpacing: 19, fit: "shrink" }
+    );
+  });
+  srcLine(s);
+
+  /* 3. Situation */
+  s = pptx.addSlide({ masterName: "CONTENT" });
+  kick(s, "The situation", "03");
+  title(s, n.situation[0]);
+  statCards(s, [
+    { value: money(lm.revenue), label: `revenue in ${lm.label}, the most recent reported quarter` },
+    { value: pct(lm.margin), label: `operating margin${lm.marginDelta !== null ? `, ${lm.marginDelta >= 0 ? "up" : "down"} ${pp(lm.marginDelta)} against ${lm.priorLabel}` : ""}` },
+    { value: pct(a.revShift), label: "revenue change, last four quarters against the prior four" },
+  ], 2.0);
+  s.addText(n.situation[1], { x: MARGIN, y: 4.2, w: SLIDE_W - 2 * MARGIN, h: 1.1, fontFace: THEME.sans, fontSize: 12.5, color: "404850", valign: "top", fit: "shrink" });
+  srcLine(s);
+
+  /* 4. Complication */
+  s = pptx.addSlide({ masterName: "CONTENT" });
+  kick(s, "The complication", "04");
+  title(s, "What makes this hard to read from the numbers alone");
+  s.addShape("rect", { x: MARGIN, y: 1.7, w: SLIDE_W - 2 * MARGIN, h: 2.3, fill: { color: THEME.fill }, line: { type: "none" } });
+  s.addShape("rect", { x: MARGIN, y: 1.7, w: 0.06, h: 2.3, fill: { color: THEME.accent }, line: { type: "none" } });
+  s.addText(n.complication, {
+    x: MARGIN + 0.25, y: 1.85, w: SLIDE_W - 2 * MARGIN - 0.5, h: 2.0,
+    fontFace: THEME.sans, fontSize: fitSize(n.complication, SLIDE_W - 2 * MARGIN - 0.5, 2.0, 14),
+    color: THEME.ink, valign: "top", lineSpacing: 22,
+  });
+  srcLine(s);
+
+  /* 5. Diagnosis, the quarterly picture */
+  s = pptx.addSlide({ masterName: "CONTENT" });
+  kick(s, "Diagnosis, the quarterly picture", "05");
+  title(s, `Revenue and margin across ${a.withMargin.length} reported quarters`);
+  addQuarterCharts(s, a);
+  s.addShape("rect", { x: MARGIN, y: 5.1, w: SLIDE_W - 2 * MARGIN, h: 0.52, fill: { color: THEME.fill }, line: { type: "none" } });
+  s.addShape("rect", { x: MARGIN, y: 5.1, w: 0.06, h: 0.52, fill: { color: THEME.accent }, line: { type: "none" } });
+  const readIt = `${first.label} to ${lm.label}: revenue ${a.revShift >= 0 ? "up" : "down"} ${pct(Math.abs(a.revShift))} on a four quarter basis, margin ${
+    a.marginShift === null ? "flat" : (a.marginShift >= 0 ? "up " : "down ") + pp(a.marginShift)
+  }.`;
+  s.addText(readIt, {
+    x: MARGIN + 0.2, y: 5.1, w: SLIDE_W - 2 * MARGIN - 0.4, h: 0.52,
+    fontFace: THEME.sans, fontSize: 12.5, bold: true, color: THEME.ink, valign: "middle", fit: "shrink",
+  });
+  srcLine(s);
+
+  /* 6. Recommendation */
+  s = pptx.addSlide({ masterName: "CONTENT" });
+  kick(s, "Recommendation", "06");
+  title(s, `What ${a.company} should do about it`);
+  n.recommendations.forEach(([head, text], i) => {
+    const y = 1.65 + i * 1.55;
+    s.addText(String(i + 1).padStart(2, "0"), { x: MARGIN, y, w: 0.55, h: 0.42, fontFace: THEME.sans, fontSize: 15, bold: true, color: THEME.accent });
+    s.addText(head, { x: 1.05, y, w: 11.7, h: 0.42, fontFace: THEME.sans, fontSize: 15, bold: true, color: THEME.ink, valign: "middle", fit: "shrink" });
+    s.addText(text, { x: 1.05, y: y + 0.44, w: 11.7, h: 0.9, fontFace: THEME.sans, fontSize: 12.5, color: "404850", valign: "top", lineSpacing: 18, fit: "shrink" });
+  });
+  srcLine(s);
+
+  /* 7. Risks and triggers */
+  s = pptx.addSlide({ masterName: "CONTENT" });
+  kick(s, "Risks and triggers", "07");
+  title(s, "What would change the call");
+  const colW = (SLIDE_W - 2 * MARGIN - 0.4) / 2;
+  const cols = [
+    { head: "IF THE READING HOLDS", items: n.changeTheCall.slice(0, 1) },
+    { head: "IF THE CALL CHANGES", items: n.changeTheCall.slice(1) },
+  ];
+  cols.forEach((c, i) => {
+    const x = MARGIN + i * (colW + 0.4);
+    s.addText(c.head, { x, y: 1.7, w: colW, h: 0.3, fontFace: THEME.sans, fontSize: 10.5, bold: true, color: i === 0 ? THEME.good : THEME.accent, charSpacing: 1.5 });
+    c.items.forEach((t, j) => {
+      s.addText(t, { x, y: 2.1 + j * 1.5, w: colW, h: 1.4, fontFace: THEME.sans, fontSize: fitSize(t, colW, 1.4, 12.5), color: "404850", valign: "top", lineSpacing: 19 });
+    });
+  });
+  srcLine(s);
+
+  /* 8. Bottom line */
+  s = pptx.addSlide();
+  s.background = { color: THEME.ink };
+  s.addText("THE BOTTOM LINE", { x: 0.6, y: 1.9, w: 11, h: 0.4, fontFace: THEME.sans, fontSize: 12, bold: true, color: THEME.accent, charSpacing: 3 });
+  const bottom = a.answer.split(". ").slice(0, 2).join(". ") + ".";
+  s.addText(bottom, { x: 0.6, y: 2.4, w: 12, h: 2.2, fontFace: THEME.serif, fontSize: fitSize(bottom, 12, 2.2, 28), color: THEME.onInk, valign: "top" });
+  if (a.watch && a.watch.text) {
+    s.addText("ONE METRIC TO WATCH", { x: 0.6, y: 4.9, w: 11, h: 0.3, fontFace: THEME.sans, fontSize: 10, bold: true, color: "B8C2CC", charSpacing: 2 });
+    s.addText(a.watch.text, { x: 0.6, y: 5.25, w: 12, h: 1.1, fontFace: THEME.sans, fontSize: 13, color: THEME.onInk, valign: "top", fit: "shrink" });
+  }
+  s.addText(src, { x: 0.6, y: 6.9, w: 11.5, h: 0.35, fontFace: THEME.sans, fontSize: 9, color: "8A97A3" });
+
+  return pptx.write({ outputType: "blob" });
 }

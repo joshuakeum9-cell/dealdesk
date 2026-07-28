@@ -795,7 +795,10 @@ async function buildOutput(key, deal, m) {
     return deal.analysis ? generateDiagnosisMemoDocx(deal, m) : generateSummaryDocx(deal, m);
   }
   if (key === "guide") return generateGuideDocx(deal, m);
-  if (key === "synergy") return generateSynergyPptx(deal, m);
+  if (key === "synergy") {
+    // With live filings the deck follows the diagnosis narrative
+    return deal.analysis ? generateDiagnosisDeckPptx(deal, m) : generateSynergyPptx(deal, m);
+  }
   if (key === "model") {
     return { model: generateModelXlsx(deal, m), email: await generateEmailDocx(deal, m) };
   }
