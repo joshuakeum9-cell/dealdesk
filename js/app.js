@@ -723,8 +723,29 @@ async function runGeneration() {
   setTheme(currentTheme());
 
   const P = practiceOf(state.deal);
-  document.querySelector('.output-card[data-output="guide"] h3').textContent = guideTitleOf(state.deal);
-  document.querySelector('.output-card[data-output="synergy"] h3').textContent = P.deckShort;
+  // Live filings produce a diagnosis rather than a brief, so the cards
+  // have to name what was actually built. Promising a synergy deck and
+  // handing over an operating review is the kind of small dishonesty
+  // that makes someone distrust the rest of the package.
+  const diag = !!state.analysis;
+  const cardText = {
+    summary: diag
+      ? ["Diagnosis Memo", "Answer up front, then situation, complication, diagnosis, and the recommendation"]
+      : ["Business Summary", "Company overview, financial profile, market position, key risks"],
+    guide: [guideTitleOf(state.deal), "Structured management interview questions by workstream"],
+    synergy: diag
+      ? ["Diagnosis Presentation", "The argument in eight slides, with the reported quarters charted"]
+      : [P.deckShort, "Synergy hypotheses ranked by impact and achievability"],
+    model: diag
+      ? ["Supporting Model + Email Summary", `The reported quarters and a bear, base, and bull ${state.analysis.practice === "strategy" ? "growth" : "margin"} scenario, plus an answer first email draft`]
+      : ["Excel Model + Email Summary", "Scenario model with labeled inputs, plus an answer first email draft"],
+  };
+  for (const [key, [title, desc]] of Object.entries(cardText)) {
+    const card = document.querySelector(`.output-card[data-output="${key}"]`);
+    if (!card) continue;
+    card.querySelector("h3").textContent = title;
+    card.querySelector(".output-desc").textContent = desc;
+  }
 
   nextStep(4);
   document.getElementById("gen-title").textContent = "Building your deal package";
@@ -920,6 +941,17 @@ function previewOutput(key) {
       );
     },
     model: () => {
+      if (deal.analysis) {
+        const a = deal.analysis;
+        const specs = modelSpecs(deal, m);
+        const scenarioTab = specs[2] ? specs[2].name : "Scenario";
+        const line = a.practice === "strategy" ? "the growth rate" : a.practice === "financial" ? "what the earnings base is worth" : "operating margin";
+        return `<h4>Workbook structure</h4>
+          <ul><li><strong>${specs[0].name}</strong>: the question, how to read the model, the headline figures as live links, and the sources</li>
+          <li><strong>${specs[1].name}</strong>: ${a.withMargin.length} quarters of revenue and operating income exactly as filed, with margin and year over year computed</li>
+          <li><strong>${scenarioTab}</strong>: bear, base, and bull paths for the next four quarters, testing ${line}, each anchored to the same quarter a year earlier</li></ul>
+          <h4>Email summary</h4><ul><li><strong>Subject:</strong> ${email.subject}</li><li>${email.answer}</li></ul>`;
+      }
       const sc = computeScenarios(deal, m);
       const term = practiceTerm(deal);
       return `<h4>Workbook structure</h4>
@@ -931,11 +963,17 @@ function previewOutput(key) {
     },
   };
 
+  // The preview modal reads the card it was opened from, so the two
+  // can never drift apart.
+  const cardTitle = (key, fallback) => {
+    const el = document.querySelector(`.output-card[data-output="${key}"] h3`);
+    return el && el.textContent.trim() ? el.textContent.trim() : fallback;
+  };
   const titles = {
-    summary: "Business Summary",
-    guide: guideTitleOf(deal),
-    synergy: P.deckShort,
-    model: "Excel Model + Email Summary",
+    summary: cardTitle("summary", "Business Summary"),
+    guide: cardTitle("guide", guideTitleOf(deal)),
+    synergy: cardTitle("synergy", P.deckShort),
+    model: cardTitle("model", "Excel Model + Email Summary"),
   };
 
   document.getElementById("modal-title").textContent = titles[key];

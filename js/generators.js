@@ -1417,44 +1417,60 @@ function buildDiagnosisWorkbook(deal, a) {
       // instead would collapse it onto base whenever the current rate
       // is already below that floor, leaving two identical columns.
       const gStep = Math.max(0.02, Math.abs(revTrend) * 0.5);
-      const gSeed = { bear: revTrend - gStep, base: revTrend, bull: revTrend + gStep }[key];
-      fq.forEach((f, i) => put(S, r, C_F0 + i, Math.round(gSeed * 1000) / 1000, { z: PCT, s: ST.input }));
+      const gSeed = Math.round({ bear: revTrend - gStep, base: revTrend, bull: revTrend + gStep }[key] * 1000) / 1000;
+      fq.forEach((f, i) => put(S, r, C_F0 + i, gSeed, { z: PCT, s: ST.input }));
       put(S, r++, C_TOT, "", { s: ST.calc });
+      // Every formula carries the value it evaluates to. Excel would
+      // recalculate on open, but the on screen preview reads the cached
+      // number, and a preview full of zeros reads as a broken model.
+      const revs = fq.map((_, i) => anchorRev(i) * (1 + gSeed));
+      const revTotal = revs.reduce((s, v) => s + v, 0);
+      const profits = revs.map((v) => v * heldMargin);
+      const profTotal = profits.reduce((s, v) => s + v, 0);
+      const anchorSum = fq.reduce((s, _, i) => s + anchorRev(i), 0);
       const revRow = r;
       put(S, r, 1, "  Revenue ($M)", { s: ST.label });
       put(S, r, C_ACT, null, { f: `'${TREND_TAB}'!C${lastTrendRow}`, v: last.revenue, z: NUMFMT, s: ST.calc });
       fq.forEach((_, i) => {
         const c = L(C_F0 + i);
-        put(S, r, C_F0 + i, null, { f: `${c}${ex(anchorRow)}*(1+${c}${ex(gRow)})`, v: anchorRev(i) * (1 + gSeed), z: NUMFMT, s: ST.calc });
+        put(S, r, C_F0 + i, null, { f: `${c}${ex(anchorRow)}*(1+${c}${ex(gRow)})`, v: revs[i], z: NUMFMT, s: ST.calc });
       });
-      put(S, r, C_TOT, null, { f: `SUM(${L(C_F0)}${ex(r)}:${L(C_F0 + 3)}${ex(r)})`, v: 0, z: NUMFMT, s: ST.calcBold });
+      put(S, r, C_TOT, null, { f: `SUM(${L(C_F0)}${ex(r)}:${L(C_F0 + 3)}${ex(r)})`, v: revTotal, z: NUMFMT, s: ST.calcBold });
       r++;
       const profRow = r;
       put(S, r, 1, "  Operating profit ($M) at the held margin", { s: ST.label });
       put(S, r, C_ACT, "", { s: ST.calc });
       fq.forEach((_, i) => {
         const c = L(C_F0 + i);
-        put(S, r, C_F0 + i, null, { f: `${c}${ex(revRow)}*${heldRef}`, v: 0, z: NUMFMT, s: ST.calc });
+        put(S, r, C_F0 + i, null, { f: `${c}${ex(revRow)}*${heldRef}`, v: profits[i], z: NUMFMT, s: ST.calc });
       });
-      put(S, r, C_TOT, null, { f: `SUM(${L(C_F0)}${ex(r)}:${L(C_F0 + 3)}${ex(r)})`, v: 0, z: NUMFMT, s: ST.calcBold });
+      put(S, r, C_TOT, null, { f: `SUM(${L(C_F0)}${ex(r)}:${L(C_F0 + 3)}${ex(r)})`, v: profTotal, z: NUMFMT, s: ST.calcBold });
       r++;
       const anchorTotal = `SUM(${L(C_F0)}${ex(anchorRow)}:${L(C_F0 + 3)}${ex(anchorRow)})`;
       outcome[key] = {
         primary: `${L(C_TOT)}${ex(revRow)}`,
+        primaryVal: revTotal,
         secondary: `IF(${anchorTotal}=0,"",${L(C_TOT)}${ex(revRow)}/${anchorTotal}-1)`,
+        secondaryVal: anchorSum ? revTotal / anchorSum - 1 : 0,
         secondaryFmt: PCT,
         profit: `${L(C_TOT)}${ex(profRow)}`,
+        profitVal: profTotal,
       };
       r++;
     }
   } else {
     // Operations and transaction work both argue about margin, so both
     // hold revenue as the input and put margin under test.
+    // Every formula carries the value it evaluates to. Excel would
+    // recalculate on open, but the on screen preview reads the cached
+    // number, and a preview full of zeros reads as a broken model.
+    const revSeeds = fq.map((_, i) => roundSeed(anchorRev(i) * (1 + revTrend)));
+    const revTotal = revSeeds.reduce((s, v) => s + v, 0);
     const revRow = r;
     put(S, r, 1, "Revenue ($M)", { s: ST.label });
     put(S, r, C_ACT, null, { f: `'${TREND_TAB}'!C${lastTrendRow}`, v: last.revenue, z: NUMFMT, s: ST.calc });
-    fq.forEach((_, i) => put(S, r, C_F0 + i, roundSeed(anchorRev(i) * (1 + revTrend)), { z: NUMFMT, s: ST.input }));
-    put(S, r, C_TOT, null, { f: `SUM(${L(C_F0)}${ex(r)}:${L(C_F0 + 3)}${ex(r)})`, v: 0, z: NUMFMT, s: ST.calcBold });
+    fq.forEach((_, i) => put(S, r, C_F0 + i, revSeeds[i], { z: NUMFMT, s: ST.input }));
+    put(S, r, C_TOT, null, { f: `SUM(${L(C_F0)}${ex(r)}:${L(C_F0 + 3)}${ex(r)})`, v: revTotal, z: NUMFMT, s: ST.calcBold });
     r++;
     put(S, r++, 1, `Revenue is seeded from the same quarter a year earlier, moved ${revTrend < 0 ? "down" : "up"} ${Math.abs(revTrend * 100).toFixed(1)} percent, which is the rate the last four quarters actually ran at. Change it and every scenario below recalculates.`, { s: ST.note });
     r++;
@@ -1462,25 +1478,32 @@ function buildDiagnosisWorkbook(deal, a) {
       put(S, r, 1, `${label} scenario: ${note}`, { s: ST.section });
       for (let c = 2; c <= C_TOT; c++) put(S, r, c, "", { s: ST.section });
       r++;
+      const mSeeds = fq.map((_, i) => Math.round(clampMargin(anchorMargin(i) + deltas[key]) * 1000) / 1000);
+      const profits = mSeeds.map((mv, i) => revSeeds[i] * mv);
+      const profTotal = profits.reduce((s, v) => s + v, 0);
+      const blended = revTotal ? profTotal / revTotal : 0;
       const mRow = r;
       put(S, r, 1, "  Operating margin", { s: ST.label });
       put(S, r, C_ACT, null, { f: `'${TREND_TAB}'!E${lastTrendRow}`, v: last.margin === null ? 0 : last.margin, z: PCT, s: ST.calc });
-      fq.forEach((_, i) => put(S, r, C_F0 + i, Math.round(clampMargin(anchorMargin(i) + deltas[key]) * 1000) / 1000, { z: PCT, s: ST.input }));
-      put(S, r++, C_TOT, null, { f: `IF(${L(C_TOT)}${ex(revRow)}=0,"",${L(C_TOT)}${ex(r)}/${L(C_TOT)}${ex(revRow)})`, v: 0, z: PCT, s: ST.calcBold });
+      fq.forEach((_, i) => put(S, r, C_F0 + i, mSeeds[i], { z: PCT, s: ST.input }));
+      put(S, r++, C_TOT, null, { f: `IF(${L(C_TOT)}${ex(revRow)}=0,"",${L(C_TOT)}${ex(r)}/${L(C_TOT)}${ex(revRow)})`, v: blended, z: PCT, s: ST.calcBold });
       const profRow = r;
       put(S, r, 1, "  Operating profit ($M)", { s: ST.label });
       put(S, r, C_ACT, "", { s: ST.calc });
       fq.forEach((_, i) => {
         const c = L(C_F0 + i);
-        put(S, r, C_F0 + i, null, { f: `${c}${ex(revRow)}*${c}${ex(mRow)}`, v: 0, z: NUMFMT, s: ST.calc });
+        put(S, r, C_F0 + i, null, { f: `${c}${ex(revRow)}*${c}${ex(mRow)}`, v: profits[i], z: NUMFMT, s: ST.calc });
       });
-      put(S, r, C_TOT, null, { f: `SUM(${L(C_F0)}${ex(r)}:${L(C_F0 + 3)}${ex(r)})`, v: 0, z: NUMFMT, s: ST.calcBold });
+      put(S, r, C_TOT, null, { f: `SUM(${L(C_F0)}${ex(r)}:${L(C_F0 + 3)}${ex(r)})`, v: profTotal, z: NUMFMT, s: ST.calcBold });
       r++;
       outcome[key] = {
         primary: `${L(C_TOT)}${ex(profRow)}`,
+        primaryVal: profTotal,
         secondary: `${L(C_TOT)}${ex(mRow)}`,
+        secondaryVal: blended,
         secondaryFmt: PCT,
         profit: `${L(C_TOT)}${ex(profRow)}`,
+        profitVal: profTotal,
       };
       r++;
     }
@@ -1524,15 +1547,16 @@ function buildDiagnosisWorkbook(deal, a) {
   // known before the summary formulas that point at it are written:
   // three scenario rows, a blank, a heading, then the multiples.
   const multRow = summaryStart + 5;
+  const MULTIPLES = [8, 11, 14];
   for (const [label, key] of scenarios) {
     const o = outcome[key];
     put(S, r, 1, label, { s: ST.label });
-    put(S, r, 2, null, { f: o.primary, v: 0, z: NUMFMT, s: ST.calc });
-    put(S, r, 3, null, { f: o.secondary, v: 0, z: o.secondaryFmt, s: ST.calc });
+    put(S, r, 2, null, { f: o.primary, v: o.primaryVal, z: NUMFMT, s: ST.calc });
+    put(S, r, 3, null, { f: o.secondary, v: o.secondaryVal, z: o.secondaryFmt, s: ST.calc });
     if (isFinancial) {
-      [0, 1, 2].forEach((i) => {
+      MULTIPLES.forEach((mult, i) => {
         const mc = L(2 + i);
-        put(S, r, 4 + i, null, { f: `${o.profit}*${mc}$${ex(multRow)}`, v: 0, z: NUMFMT, s: ST.calc });
+        put(S, r, 4 + i, null, { f: `${o.profit}*${mc}$${ex(multRow)}`, v: o.profitVal * mult, z: NUMFMT, s: ST.calc });
       });
     }
     r++;
@@ -1542,7 +1566,7 @@ function buildDiagnosisWorkbook(deal, a) {
     put(S, r, 1, "EBIT multiple applied to the four quarter run rate", { s: ST.labelBold });
     r++;
     put(S, r, 1, "Multiple", { s: ST.label });
-    [8, 11, 14].forEach((v, i) => put(S, r, 2 + i, v, { z: MULT, s: ST.input }));
+    MULTIPLES.forEach((v, i) => put(S, r, 2 + i, v, { z: MULT, s: ST.input }));
     r++;
     put(S, r++, 1, "Implied value is the four quarter operating profit above multiplied by the chosen EBIT multiple. It is arithmetic, not a valuation: the multiple is an input because the right one is a judgment about this business, not a number a spreadsheet can find.", { s: ST.note });
   }
