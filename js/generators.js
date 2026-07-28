@@ -653,6 +653,11 @@ function addSummaryCharts(slide, m) {
     dataLabelFontFace: THEME.sans,
     dataLabelFontSize: 9,
     dataLabelColor: "404850",
+    // Unset chart fonts fall back to the library default of Arial, which
+    // shows up as a stray typeface in a deck built on any other pairing.
+    valAxisLabelFontFace: THEME.sans,
+    legendFontFace: THEME.sans,
+    titleFontFace: THEME.serif,
   };
 
   slide.addText(`REVENUE, ${big ? "$B" : "$M"}`, {
@@ -890,20 +895,24 @@ function makeWorkbookKit() {
   const MULT = '0.0"x"';
   const PTS = '0.0" pts";(0.0)" pts"';
 
+  // Read the typography once per build so the workbook follows the same
+  // pairing as the memo and the deck rather than a hardcoded Arial.
+  const BOOK_SANS = THEME.sans, BOOK_SERIF = THEME.serif;
+
   const thin = { style: "thin", color: { rgb: "D9D9DD" } };
   const box = { top: thin, bottom: thin, left: thin, right: thin };
   const ST = {
-    title: { font: { name: "Arial", sz: 13, bold: true, color: { rgb: THEME.ink } } },
-    note: { font: { name: "Arial", sz: 9, italic: true, color: { rgb: "63666A" } } },
-    section: { font: { name: "Arial", sz: 10, bold: true, color: { rgb: THEME.onInk } }, fill: { patternType: "solid", fgColor: { rgb: THEME.ink } } },
-    label: { font: { name: "Arial", sz: 10, color: { rgb: "1A1A1A" } } },
-    input: { font: { name: "Arial", sz: 10, bold: true, color: { rgb: "1F4E79" } }, fill: { patternType: "solid", fgColor: { rgb: "FFF2CC" } }, border: box, alignment: { horizontal: "right" } },
-    calc: { font: { name: "Arial", sz: 10, color: { rgb: "1A1A1A" } }, alignment: { horizontal: "right" } },
-    calcBold: { font: { name: "Arial", sz: 10, bold: true, color: { rgb: "1A1A1A" } }, fill: { patternType: "solid", fgColor: { rgb: "F2F5F7" } }, border: { top: { style: "thin", color: { rgb: THEME.ink } } }, alignment: { horizontal: "right" } },
-    labelBold: { font: { name: "Arial", sz: 10, bold: true, color: { rgb: "1A1A1A" } }, fill: { patternType: "solid", fgColor: { rgb: "F2F5F7" } }, border: { top: { style: "thin", color: { rgb: THEME.ink } } } },
-    pctRow: { font: { name: "Arial", sz: 9, italic: true, color: { rgb: "63666A" } }, alignment: { horizontal: "right" } },
-    yearA: { font: { name: "Arial", sz: 10, bold: true, color: { rgb: THEME.onInk } }, fill: { patternType: "solid", fgColor: { rgb: THEME.ink } }, alignment: { horizontal: "center" } },
-    yearF: { font: { name: "Arial", sz: 10, bold: true, color: { rgb: THEME.ink } }, fill: { patternType: "solid", fgColor: { rgb: THEME.fillAccent } }, alignment: { horizontal: "center" } },
+    title: { font: { name: BOOK_SERIF, sz: 13, bold: true, color: { rgb: THEME.ink } } },
+    note: { font: { name: BOOK_SANS, sz: 9, italic: true, color: { rgb: "63666A" } } },
+    section: { font: { name: BOOK_SANS, sz: 10, bold: true, color: { rgb: THEME.onInk } }, fill: { patternType: "solid", fgColor: { rgb: THEME.ink } } },
+    label: { font: { name: BOOK_SANS, sz: 10, color: { rgb: "1A1A1A" } } },
+    input: { font: { name: BOOK_SANS, sz: 10, bold: true, color: { rgb: "1F4E79" } }, fill: { patternType: "solid", fgColor: { rgb: "FFF2CC" } }, border: box, alignment: { horizontal: "right" } },
+    calc: { font: { name: BOOK_SANS, sz: 10, color: { rgb: "1A1A1A" } }, alignment: { horizontal: "right" } },
+    calcBold: { font: { name: BOOK_SANS, sz: 10, bold: true, color: { rgb: "1A1A1A" } }, fill: { patternType: "solid", fgColor: { rgb: "F2F5F7" } }, border: { top: { style: "thin", color: { rgb: THEME.ink } } }, alignment: { horizontal: "right" } },
+    labelBold: { font: { name: BOOK_SANS, sz: 10, bold: true, color: { rgb: "1A1A1A" } }, fill: { patternType: "solid", fgColor: { rgb: "F2F5F7" } }, border: { top: { style: "thin", color: { rgb: THEME.ink } } } },
+    pctRow: { font: { name: BOOK_SANS, sz: 9, italic: true, color: { rgb: "63666A" } }, alignment: { horizontal: "right" } },
+    yearA: { font: { name: BOOK_SANS, sz: 10, bold: true, color: { rgb: THEME.onInk } }, fill: { patternType: "solid", fgColor: { rgb: THEME.ink } }, alignment: { horizontal: "center" } },
+    yearF: { font: { name: BOOK_SANS, sz: 10, bold: true, color: { rgb: THEME.ink } }, fill: { patternType: "solid", fgColor: { rgb: THEME.fillAccent } }, alignment: { horizontal: "center" } },
   };
 
   // Roles are recorded alongside the cells so the on screen preview can
@@ -1245,45 +1254,61 @@ function buildDiagnosisWorkbook(deal, a) {
     fq.push({ label: `Q${fqn} ${fy}`, anchor: byKey.get(`${fy - 1}Q${fqn}`) || null });
   }
 
-  const pctOrNa = (v) => (v === null || v === undefined || !isFinite(v) ? "not reported" : (v * 100).toFixed(1) + "%");
   const clampMargin = (v) => Math.max(-0.5, Math.min(0.6, v));
+  // A seeded assumption should look like an assumption. Carrying a
+  // projection to the decimal implies a precision nobody has.
+  const roundSeed = (v) => {
+    const a2 = Math.abs(v);
+    const step = a2 >= 5000 ? 100 : a2 >= 500 ? 10 : a2 >= 50 ? 1 : 0.1;
+    return Math.round(v / step) * step;
+  };
 
-  /* ---------------- Sheet 1: Read Me ---------------- */
-  const R = newSheet([2, 46, 16, 16, 16, 16, 16]);
-  let r = 1;
-  put(R, r, 1, "DEALDESK", { s: ST.note });
-  put(R, r++, 3, co, { s: ST.note });
-  put(R, r++, 1, `${co} ${a.lens.docTitle.toLowerCase()}: supporting model`, { s: ST.title });
-  r++;
-  put(R, r++, 1, "Purpose", { s: ST.labelBold });
-  put(R, r++, 1, `A simple, transparent model behind one question: ${a.question} Every figure in it traces to a filing.`, { s: ST.label });
-  r++;
-  put(R, r++, 1, "How to read it", { s: ST.labelBold });
-  put(R, r++, 1, "Yellow cells are inputs and assumptions you can change. Every other number is a live formula that recalculates from them.", { s: ST.label });
-  r++;
-  put(R, r++, 1, "Tabs", { s: ST.labelBold });
-  put(R, r++, 1, `1. ${TREND_TAB}. ${qs.length} quarters of revenue and operating income exactly as reported.`, { s: ST.label });
-  put(R, r++, 1, `2. ${spec.tab}. ${spec.blurb.charAt(0).toUpperCase() + spec.blurb.slice(1)}`, { s: ST.label });
-  r++;
-  put(R, r++, 1, "Key figures at a glance", { s: ST.labelBold });
-  put(R, r, 1, `${last.label} operating margin`, { s: ST.label });
-  put(R, r++, 2, last.margin === null ? "not reported" : last.margin, last.margin === null ? { s: ST.calc } : { z: PCT, s: ST.calc });
-  put(R, r, 1, "Trailing four quarter average operating margin", { s: ST.label });
-  put(R, r++, 2, a.trailingAvg === null ? "not reported" : a.trailingAvg, a.trailingAvg === null ? { s: ST.calc } : { z: PCT, s: ST.calc });
-  put(R, r, 1, "Change against the four quarters before that", { s: ST.label });
-  put(R, r++, 2, a.marginShift === null ? "not reported" : a.marginShift * 100, a.marginShift === null ? { s: ST.calc } : { z: PTS, s: ST.calc });
-  put(R, r, 1, "Revenue over the same comparison", { s: ST.label });
-  put(R, r++, 2, a.revShift === null ? "not reported" : a.revShift, a.revShift === null ? { s: ST.calc } : { z: PCT, s: ST.calc });
-  r++;
-  put(R, r++, 1, "The test", { s: ST.labelBold });
-  put(R, r++, 1, a.watch && a.watch.text ? a.watch.text : "The next reported quarter is the test of everything above.", { s: ST.label });
-  r++;
-  put(R, r++, 1, "Sources and caveats", { s: ST.labelBold });
-  put(R, r++, 1, a.source, { s: ST.note });
-  put(R, r++, 1, "Figures are company wide as filed. A business with divergent segments can hold a stable consolidated margin while one segment deteriorates, so segment detail would sharpen this read.", { s: ST.note });
-  finish(R, "Read Me");
+  /* Read Me is written last, so its headline figures can be live links
+     into the tabs below rather than frozen copies that go stale the
+     moment someone edits an input. It is moved back to the front at
+     the end, where a reader expects to find it. */
+  const writeReadMe = (live) => {
+    const R = newSheet([2, 46, 16, 16, 16, 16, 16]);
+    let rr = 1;
+    put(R, rr, 1, "DEALDESK", { s: ST.note });
+    put(R, rr++, 3, co, { s: ST.note });
+    put(R, rr++, 1, `${co} ${a.lens.docTitle.toLowerCase()}: supporting model`, { s: ST.title });
+    rr++;
+    put(R, rr++, 1, "Purpose", { s: ST.labelBold });
+    put(R, rr++, 1, `A simple, transparent model behind one question: ${a.question} Every figure in it traces to a filing.`, { s: ST.label });
+    rr++;
+    put(R, rr++, 1, "How to read it", { s: ST.labelBold });
+    put(R, rr++, 1, "Yellow cells are inputs and assumptions you can change. Every other number is a live formula that recalculates from them.", { s: ST.label });
+    rr++;
+    put(R, rr++, 1, "Tabs", { s: ST.labelBold });
+    put(R, rr++, 1, `1. ${TREND_TAB}. ${qs.length} quarters of revenue and operating income exactly as reported.`, { s: ST.label });
+    put(R, rr++, 1, `2. ${spec.tab}. ${spec.blurb.charAt(0).toUpperCase() + spec.blurb.slice(1)}`, { s: ST.label });
+    rr++;
+    put(R, rr++, 1, "Key figures at a glance", { s: ST.labelBold });
+    const fig = (labelText, formula, fallback, fmt) => {
+      put(R, rr, 1, labelText, { s: ST.label });
+      if (fallback === null || fallback === undefined || !isFinite(fallback)) put(R, rr++, 2, "not reported", { s: ST.calc });
+      // Short histories leave no room for the comparison the formula
+      // needs, so the computed figure stands on its own.
+      else if (!formula) put(R, rr++, 2, fallback, { z: fmt, s: ST.calc });
+      else put(R, rr++, 2, null, { f: formula, v: fallback, z: fmt, s: ST.calc });
+    };
+    fig(`${last.label} operating margin`, live.latestMargin, last.margin, PCT);
+    fig("Trailing four quarter average operating margin", live.trailingAvg, a.trailingAvg, PCT);
+    fig("Change against the four quarters before that", live.marginShift, a.marginShift === null ? null : a.marginShift * 100, PTS);
+    fig("Revenue over the same comparison", live.revShift, a.revShift, PCT);
+    rr++;
+    put(R, rr++, 1, "The test", { s: ST.labelBold });
+    put(R, rr++, 1, a.watch && a.watch.text ? a.watch.text : "The next reported quarter is the test of everything above.", { s: ST.label });
+    rr++;
+    put(R, rr++, 1, "Sources and caveats", { s: ST.labelBold });
+    put(R, rr++, 1, a.source, { s: ST.note });
+    put(R, rr++, 1, "Figures are company wide as filed. A business with divergent segments can hold a stable consolidated margin while one segment deteriorates, so segment detail would sharpen this read.", { s: ST.note });
+    finish(R, "Read Me");
+  };
 
   /* ---------------- Sheet 2: Quarterly Trend ---------------- */
+  let r;
   const T = newSheet([2, 16, 16, 20, 16, 16, 16]);
   r = 1;
   put(T, r, 1, "DEALDESK", { s: ST.note });
@@ -1331,7 +1356,7 @@ function buildDiagnosisWorkbook(deal, a) {
 
   // Header: the last reported quarter, then the four ahead, then the total
   const headRow = r;
-  put(S, r, 1, spec.driver, { s: ST.yearA });
+  put(S, r, 1, "Company wide, $M", { s: ST.yearA });
   put(S, r, 2, `${last.label} (actual)`, { s: ST.yearA });
   fq.forEach((f, i) => put(S, r, 3 + i, f.label, { s: ST.yearF }));
   put(S, r, 7, "Next four", { s: ST.yearA });
@@ -1387,7 +1412,12 @@ function buildDiagnosisWorkbook(deal, a) {
       const gRow = r;
       put(S, r, 1, "  Revenue growth, year over year", { s: ST.label });
       put(S, r, C_ACT, null, { f: `'${TREND_TAB}'!F${lastTrendRow}`, v: last.revYoY === null ? 0 : last.revYoY, z: PCT, s: ST.calc });
-      const gSeed = { bear: Math.min(revTrend, -0.01), base: revTrend, bull: Math.max(revTrend + 0.03, 0.02) }[key];
+      // Base is the rate the business is actually running at, and the
+      // other two are a band around it. Clamping bear to a fixed floor
+      // instead would collapse it onto base whenever the current rate
+      // is already below that floor, leaving two identical columns.
+      const gStep = Math.max(0.02, Math.abs(revTrend) * 0.5);
+      const gSeed = { bear: revTrend - gStep, base: revTrend, bull: revTrend + gStep }[key];
       fq.forEach((f, i) => put(S, r, C_F0 + i, Math.round(gSeed * 1000) / 1000, { z: PCT, s: ST.input }));
       put(S, r++, C_TOT, "", { s: ST.calc });
       const revRow = r;
@@ -1423,7 +1453,7 @@ function buildDiagnosisWorkbook(deal, a) {
     const revRow = r;
     put(S, r, 1, "Revenue ($M)", { s: ST.label });
     put(S, r, C_ACT, null, { f: `'${TREND_TAB}'!C${lastTrendRow}`, v: last.revenue, z: NUMFMT, s: ST.calc });
-    fq.forEach((_, i) => put(S, r, C_F0 + i, Math.round(anchorRev(i) * (1 + revTrend) * 10) / 10, { z: NUMFMT, s: ST.input }));
+    fq.forEach((_, i) => put(S, r, C_F0 + i, roundSeed(anchorRev(i) * (1 + revTrend)), { z: NUMFMT, s: ST.input }));
     put(S, r, C_TOT, null, { f: `SUM(${L(C_F0)}${ex(r)}:${L(C_F0 + 3)}${ex(r)})`, v: 0, z: NUMFMT, s: ST.calcBold });
     r++;
     put(S, r++, 1, `Revenue is seeded from the same quarter a year earlier, moved ${revTrend < 0 ? "down" : "up"} ${Math.abs(revTrend * 100).toFixed(1)} percent, which is the rate the last four quarters actually ran at. Change it and every scenario below recalculates.`, { s: ST.note });
@@ -1520,6 +1550,23 @@ function buildDiagnosisWorkbook(deal, a) {
   put(S, r++, 1, a.watch && a.watch.text ? a.watch.text : "The next reported quarter is the test.", { s: ST.note });
   put(S, r++, 1, a.source, { s: ST.note });
   finish(S, spec.tab);
+
+  /* The headline figures, as formulas over the trend tab, so editing a
+     reported quarter moves them the way it should. */
+  const T4 = (col) => `'${TREND_TAB}'!${col}${lastTrendRow - 3}:${col}${lastTrendRow}`;
+  const P4 = (col) => `'${TREND_TAB}'!${col}${lastTrendRow - 7}:${col}${lastTrendRow - 4}`;
+  const enough = qs.length >= 8;
+  writeReadMe({
+    latestMargin: `'${TREND_TAB}'!E${lastTrendRow}`,
+    trailingAvg: `AVERAGE(${T4("E")})`,
+    marginShift: enough ? `(AVERAGE(${T4("E")})-AVERAGE(${P4("E")}))*100` : null,
+    revShift: enough ? `IF(SUM(${P4("C")})=0,"",SUM(${T4("C")})/SUM(${P4("C")})-1)` : null,
+  });
+
+  // Read Me belongs in front of the tabs it summarizes.
+  const order = ["Read Me", TREND_TAB, spec.tab];
+  wb.SheetNames = order.filter((n) => wb.SheetNames.includes(n));
+  specs.sort((x, y) => order.indexOf(x.name) - order.indexOf(y.name));
 
   return { wb, specs };
 }
@@ -1755,6 +1802,7 @@ function addQuarterCharts(slide, a) {
     catAxisLabelFontFace: THEME.sans, catAxisLabelFontSize: 9, catAxisLabelColor: THEME.gray,
     showLegend: false, showTitle: false,
     dataLabelFontFace: THEME.sans, dataLabelFontSize: 8, dataLabelColor: "404850",
+    valAxisLabelFontFace: THEME.sans, legendFontFace: THEME.sans, titleFontFace: THEME.serif,
   };
   slide.addText(`REVENUE, ${big ? "$B" : "$M"}`, {
     x: CX, y: 1.35, w: CW / 2 - 0.2, h: 0.24,
