@@ -16,12 +16,29 @@ const state = {
    gives the description and leadership. Filings come first because the
    documents argue from them. */
 
+function currentPractice() {
+  const el = document.querySelector('input[name="practice"]:checked');
+  return el ? el.value : "financial";
+}
+
+// The practice decides the question, so switching it re-runs the
+// diagnosis against the same filing data.
+function refreshAnalysisForPractice() {
+  if (state.filings) {
+    state.analysis = analyzeFilings(state.filings, currentPractice());
+    const st = document.getElementById("lookup-status");
+    if (st && st.classList.contains("ok") && state.analysis) {
+      st.textContent = `${state.filings.quarters.length} quarters from SEC filings through ${state.filings.asOf.period}. Diagnosis: ${state.analysis.question}`;
+    }
+  }
+}
+
 async function loadFilings(name, say) {
   try {
     const profile = await fetchFilingProfile(name, say);
     if (!profile || profile.error || !profile.quarters || !profile.quarters.length) return null;
     state.filings = profile;
-    state.analysis = analyzeFilings(profile);
+    state.analysis = analyzeFilings(profile, currentPractice());
     // The annual series keeps the existing model and deck working
     if (profile.annual && profile.annual.length >= 2) {
       const series = { revenue: profile.annual.map((a) => a.revenue) };
@@ -85,9 +102,12 @@ async function runLookup() {
           addFileChip("financials", "Reported revenue (" + r.revenueSeries.years.join(", ") + ")", "applied");
         }
       }
+      const themed = await applyCompanyBranding(r);
       if (!state.analysis) {
         status.className = "lookup-status ok";
         status.textContent = "Found " + r.label + ": " + found.join("; ") + ". Documents will use this profile.";
+      } else if (themed) {
+        status.textContent += " Documents themed in " + r.label + " colors.";
       }
     } catch (e) {
       if (!state.analysis) {
@@ -203,6 +223,42 @@ function refreshBrandingUI() {
   }
 }
 
+// Theme the documents in the looked up company's own colors. Reads the
+// palette from its logo, keeps a readable contrast, and leaves every
+// control overridable so a user can still impose their own branding.
+async function applyCompanyBranding(lookup) {
+  if (!lookup || !lookup.logoUrl) return false;
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const i = new Image();
+      i.crossOrigin = "anonymous";
+      i.onload = () => resolve(i);
+      i.onerror = reject;
+      i.src = lookup.logoUrl;
+    });
+    const palette = extractLogoPalette(img);
+    if (!palette) return false;
+    document.getElementById("f-brand-primary").value = palette.primary;
+    document.getElementById("f-brand-accent").value = palette.accent;
+    const branded = document.querySelector('input[name="output-mode"][value="branded"]');
+    if (branded) branded.checked = true;
+    // Keep the logo itself for the document header
+    try {
+      const cv = document.createElement("canvas");
+      cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+      cv.getContext("2d").drawImage(img, 0, 0);
+      const url = cv.toDataURL("image/png");
+      const m = url.match(/^data:(image\/\w+);base64,(.+)$/);
+      if (m) state.brandLogo = { b64: m[2], mime: m[1], w: img.naturalWidth, h: img.naturalHeight };
+    } catch (e) { /* logo optional */ }
+    refreshBrandingUI();
+    state.autoBranded = { primary: palette.primary, accent: palette.accent };
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 function initCompanyField() {
   const el = document.getElementById("f-company");
   if (!el) return;
@@ -232,7 +288,12 @@ async function heroLookup() {
         `<span class="hero-verdict">${a.answer}</span>` +
         `<span class="hero-src">${filings.quarters.length} quarters from ${a.company} SEC filings, latest ${filings.asOf.period} (${filings.asOf.form} filed ${filings.asOf.filed}).</span>` +
         `<button class="btn btn-sm btn-primary hero-go" onclick="startFromHero()">Build the documents</button>`;
-      lookupCompany(name).then((r) => { if (r) state.lookup = r; }).catch(() => {});
+      // Registered as the in flight lookup so generation waits for the
+      // description and the brand colors instead of racing them.
+      state.lookupPromise = lookupCompany(name)
+        .then(async (r) => { if (r) { state.lookup = r; await applyCompanyBranding(r); } })
+        .catch(() => {})
+        .finally(() => { state.lookupPromise = null; });
       return;
     }
     const r = await lookupCompany(name);
@@ -595,7 +656,7 @@ function refreshGoalOptions() {
 }
 
 document.querySelectorAll('input[name="practice"]').forEach((r) =>
-  r.addEventListener("change", refreshGoalOptions)
+  r.addEventListener("change", () => { refreshGoalOptions(); refreshAnalysisForPractice(); })
 );
 
 function fillReview() {

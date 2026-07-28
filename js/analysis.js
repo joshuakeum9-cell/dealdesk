@@ -62,7 +62,134 @@ function yoyPairs(quarters) {
   });
 }
 
-function analyzeFilings(profile) {
+
+/* ---------- Practice lenses ----------
+   The data decides the pattern; the practice decides what to ask about
+   it. The same shrinking business is a cost problem to an operations
+   team, a positioning problem to a strategist, and an underwriting
+   problem to a deal team. */
+
+const PRACTICE_LENS = {
+  operations: {
+    kicker: "OPERATIONAL DIAGNOSIS",
+    docTitle: "Operational diagnosis",
+    frame: "cost base, capacity, and throughput",
+    questions: {
+      volume_for_margin: (co) => `Is the volume for margin trade working at ${co}?`,
+      shrink_not_paying: (co) => `Is ${co}'s shrinking top line buying anything?`,
+      growth_diluting: (co) => `Why is growth costing ${co} margin?`,
+      scaling: (co) => `Can ${co}'s operations hold margin at this growth rate?`,
+      compounding: (co) => `Where is ${co}'s operating leverage coming from?`,
+      recovering: (co) => `Is the margin recovery at ${co} structural or temporary?`,
+      steady: (co) => `Where is the cost opportunity at ${co}?`,
+    },
+    implication:
+      "For an operations engagement the first move is to locate where the cost actually sits, and on what schedule it can leave.",
+    complicationTail:
+      "Cost leaves a business on a slower clock than revenue does, which is why the timing, not the target, is usually what fails.",
+  },
+  strategy: {
+    kicker: "STRATEGIC REVIEW",
+    docTitle: "Strategic review",
+    frame: "position, mix, and where the next unit of value comes from",
+    questions: {
+      volume_for_margin: (co) => `Is ${co} becoming a better business or just a smaller one?`,
+      shrink_not_paying: (co) => `Is ${co} shrinking by choice or by loss?`,
+      growth_diluting: (co) => `Is ${co} buying share it cannot monetize?`,
+      scaling: (co) => `Can ${co} defend the position it is growing into?`,
+      compounding: (co) => `What is ${co}'s advantage, and how long does it hold?`,
+      recovering: (co) => `Has ${co}'s position actually improved, or only its numbers?`,
+      steady: (co) => `Where does ${co}'s next unit of value come from?`,
+    },
+    implication:
+      "For a strategy engagement the question is whether the shape the business is taking is the one worth defending.",
+    complicationTail:
+      "Financial results describe the position a business already holds; they say nothing about whether it is the position worth holding next.",
+  },
+  financial: {
+    kicker: "TRANSACTION DIAGNOSTIC",
+    docTitle: "Transaction diagnostic",
+    frame: "earnings quality, valuation, and what would break the case",
+    questions: {
+      volume_for_margin: (co) => `Would you underwrite ${co}'s margin trade at today's multiple?`,
+      shrink_not_paying: (co) => `What would you pay for ${co} while revenue and margin are both falling?`,
+      growth_diluting: (co) => `Does ${co}'s growth still justify its multiple if margin keeps sliding?`,
+      scaling: (co) => `What multiple does ${co}'s growth support, and what breaks it?`,
+      compounding: (co) => `Is ${co}'s earnings quality good enough to underwrite?`,
+      recovering: (co) => `Is ${co}'s recovery underwritable yet?`,
+      steady: (co) => `What is the value case for ${co} beyond the status quo?`,
+    },
+    implication:
+      "For a transaction the question is what this earnings profile is worth, and which assumption breaks the case first.",
+    complicationTail:
+      "A multiple applied to an earnings base that is still moving prices the past. The diligence question is which direction the base settles in.",
+  },
+};
+
+// Recommendations differ by practice and by whether the business is
+// shrinking, growing, or flat, so a deal team is not handed an
+// operations plan.
+const PRACTICE_ACTIONS = {
+  operations: {
+    shrinking: [
+      ["Rebuild the cost base to the revenue that remains", "Size network, footprint, and overhead to what the business earns now rather than what it planned for, and put dates against each reduction."],
+      ["Separate deliberate exits from lost business", "A planned exit and an unplanned loss look identical in the revenue line and call for opposite responses. Split them before deciding anything."],
+      ["Protect the profitable core", "Before chasing recovery volume, confirm the remaining book is not also eroding on price."],
+    ],
+    growing: [
+      ["Find where the next unit of cost enters", "Identify the step change, whether capacity, headcount, or infrastructure, that the next growth leg triggers, and plan it before it arrives."],
+      ["Hold the cost to serve flat as the base grows", "Measure cost per unit of revenue by quarter. If it is rising, growth is being bought rather than earned."],
+      ["Standardize before scaling", "Growth locks in whatever process exists when it happens, so fix the process first."],
+    ],
+    steady: [
+      ["Benchmark the cost base while nothing is forcing it", "Flat performance rarely triggers scrutiny, which makes it the cheapest time to find the cost."],
+      ["Take out the complexity that steady state hides", "Product, site, and process tails accumulate quietly and cost more attention than they earn."],
+      ["Set a productivity target with a date", "Without a forcing function, a steady business stays exactly as expensive as it is today."],
+    ],
+  },
+  strategy: {
+    shrinking: [
+      ["Decide which businesses are worth defending", "Rank what remains by whether it earns its cost of capital, and be explicit about what is being allowed to decline."],
+      ["Establish whether the decline is market or share", "A shrinking market and lost share demand opposite responses, and the revenue line cannot tell them apart."],
+      ["Redeploy the capital the shrink releases", "A smaller business is only a better one if the freed capital goes somewhere with a higher return."],
+    ],
+    growing: [
+      ["Name the advantage the growth rests on", "Establish whether it is price, distribution, product, or simply a growing market, because only some of those are defensible."],
+      ["Decide where not to compete", "Growth invites expansion in every direction; the strategy is which directions to refuse."],
+      ["Invest ahead of the curve while economics allow", "Expansion is cheapest to fund while results are strong, not after they turn."],
+    ],
+    steady: [
+      ["Find the adjacency the business could already take", "Identify the segment, channel, or price move available without changing what the company is."],
+      ["Test whether the position is actually stable", "Flat results can mask share loss in a growing market. Check the position, not just the numbers."],
+      ["Decide what to stop", "In a steady business the fastest value creation is usually ending something rather than starting something."],
+    ],
+  },
+  financial: {
+    shrinking: [
+      ["Rebase earnings before applying any multiple", "Establish the run rate the business actually earns after the decline, and underwrite that rather than the trailing figure."],
+      ["Quantify the downside case explicitly", "Model the scenario where the decline continues for two more years, and decide whether the price still works."],
+      ["Diligence the cost reduction as a commitment, not a plan", "Savings that require actions not yet taken belong in the risk column, not the base case."],
+    ],
+    growing: [
+      ["Test whether the growth is durable or pulled forward", "Separate structural demand from one time effects before capitalizing the growth rate."],
+      ["Underwrite the margin, not just the top line", "Growth that dilutes margin changes the multiple the business deserves."],
+      ["Set the price at which the case fails", "Define the entry multiple above which the return no longer clears the hurdle, before negotiating."],
+    ],
+    steady: [
+      ["Underwrite the base case honestly", "A stable business is a bond with equity risk. Price it on cash generation rather than on a growth story."],
+      ["Find the value the current owner is not taking", "Steady performance often hides an unexercised pricing, cost, or capital structure lever."],
+      ["Confirm there is no deferred spending", "Flat results are sometimes maintained by underinvesting, which the buyer inherits."],
+    ],
+  },
+};
+
+function situationClass(a) {
+  if (a.revShift < -0.02) return "shrinking";
+  if (a.revShift > 0.02) return "growing";
+  return "steady";
+}
+
+function analyzeFilings(profile, practice) {
   const qs = yoyPairs(profile.quarters.filter((q) => q.revenue));
   const withMargin = qs.filter((q) => q.margin !== null);
   const latest = qs[qs.length - 1];
@@ -100,38 +227,36 @@ function analyzeFilings(profile) {
   const marginUp = marginShift !== null && marginShift > 0.005;
   const marginDown = marginShift !== null && marginShift < -0.005;
 
-  let pattern, question, answer;
+  let pattern, answer;
   if (shrinking && marginUp) {
     pattern = "volume_for_margin";
-    question = `Is the volume for margin trade working at ${co}?`;
     answer = `Yes, so far. Revenue is down ${pct(Math.abs(revShift))} over the last four quarters against the prior four, but operating margin is up ${pp(marginShift)} over the same span, so the business is converting lost revenue into better economics.`;
   } else if (shrinking && marginDown) {
     pattern = "shrink_not_paying";
-    question = `Is ${co}'s shrinking top line buying anything?`;
-    answer = `Not yet. Revenue fell ${pct(Math.abs(revShift))} across the last four quarters and operating margin fell ${pp(marginShift)} with it, so the business is getting smaller without getting better. Cost is not leaving fast enough to hold margin.`;
+    answer = `Not yet. Revenue fell ${pct(Math.abs(revShift))} across the last four quarters and operating margin fell ${pp(marginShift)} with it, so the business is getting smaller without getting better.`;
   } else if (growing && marginDown) {
     pattern = "growth_diluting";
-    question = `Is ${co} buying growth at the cost of margin?`;
-    answer = `It looks that way. Revenue grew ${pct(revShift)} over the last four quarters while operating margin gave up ${pp(marginShift)}, so the incremental revenue is coming in below the margin of the existing book.`;
+    answer = `Revenue grew ${pct(revShift)} over the last four quarters while operating margin gave up ${pp(marginShift)}, so the incremental business is coming in below the economics of the existing book.`;
   } else if (strongGrowth) {
     pattern = "scaling";
-    question = `Can ${co} hold its margin while it grows this fast?`;
-    answer = `So far yes. Revenue rose ${pct(revShift)} over the last four quarters against the prior four while operating margin held near ${pct(t4)}${
+    answer = `Revenue rose ${pct(revShift)} over the last four quarters against the prior four while operating margin held near ${pct(t4)}${
       marginShift !== null ? `, moving ${marginShift >= 0 ? "up" : "down"} ${pp(marginShift)}` : ""
-    }. Growth at this rate usually costs margin, so the question is whether the cost to serve stays flat as the base gets larger.`;
+    }. Growth at this rate usually costs margin, so holding it flat is the achievement and the fragile part.`;
   } else if (growing && marginUp) {
     pattern = "compounding";
-    question = `Is ${co}'s operating leverage real?`;
-    answer = `Yes. Revenue rose ${pct(revShift)} over the last four quarters and operating margin expanded ${pp(marginShift)} at the same time, which is revenue growing faster than the cost to serve it.`;
+    answer = `Revenue rose ${pct(revShift)} over the last four quarters and operating margin expanded ${pp(marginShift)} at the same time, which is revenue growing faster than the cost to serve it.`;
   } else if (recovering && trough) {
     pattern = "recovering";
-    question = `Is the margin recovery at ${co} holding?`;
-    answer = `It has held for ${sinceTrough.length} quarters. Margin troughed at ${pct(trough.margin)} in ${trough.label} and has not gone backwards since.`;
+    answer = `Margin troughed at ${pct(trough.margin)} in ${trough.label} and has held or improved for ${sinceTrough.length} quarters since.`;
   } else {
     pattern = "steady";
-    question = `Where does ${co} create value from here?`;
-    answer = `The business is steady: revenue moved ${pct(revShift)} over the last four quarters against the prior four, with margin within half a point. Neither growth nor margin is the live issue, so the question is where the next unit of value comes from.`;
+    answer = `Revenue moved ${pct(revShift)} over the last four quarters against the prior four, with operating margin near ${t4 === null ? "its recent level" : pct(t4)}. Neither growth nor margin is the live issue.`;
   }
+
+  // The practice decides what to ask about the pattern the data shows
+  const lens = PRACTICE_LENS[practice] || PRACTICE_LENS.operations;
+  const question = lens.questions[pattern](co);
+  answer = answer + " " + lens.implication;
 
   const findings = [];
   if (lm) {
@@ -191,6 +316,8 @@ function analyzeFilings(profile) {
 
   return {
     pattern,
+    practice: practice || "operations",
+    lens,
     question,
     answer,
     findings,
@@ -284,6 +411,7 @@ const PATTERN_NARRATIVE = {
 
 function buildMemoNarrative(a, profile) {
   const spec = PATTERN_NARRATIVE[a.pattern] || PATTERN_NARRATIVE.steady;
+  const actions = (PRACTICE_ACTIONS[a.practice] || PRACTICE_ACTIONS.operations)[situationClass(a)];
   const co = a.company;
   const first = a.withMargin[0] || a.quarters[0];
   const last = a.withMargin[a.withMargin.length - 1] || a.quarters[a.quarters.length - 1];
@@ -296,9 +424,9 @@ function buildMemoNarrative(a, profile) {
         a.trailingAvg !== null ? `, with operating margin averaging ${pct(a.trailingAvg)} over the last four quarters` : ""
       }.`,
     ],
-    complication: spec.complication,
-    diagnosisLead: `The question: across the ${a.withMargin.length} quarters with reported operating income, are revenue and the cost base moving in a way that builds margin or erodes it?`,
-    recommendations: spec.recommendations,
+    complication: spec.complication + " " + a.lens.complicationTail,
+    diagnosisLead: `The question: across the ${a.withMargin.length} quarters with reported operating income, what do ${a.lens.frame} say about the answer above?`,
+    recommendations: actions,
     changeTheCall: [
       a.watch && a.watch.target !== null
         ? `If ${a.watch.quarter} operating margin lands at or above ${pct(a.watch.target)}, the reading here holds and the question moves from diagnosing margin to sustaining it.`

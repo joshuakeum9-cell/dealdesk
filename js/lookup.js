@@ -135,6 +135,29 @@ async function lookupCompany(name) {
     } catch (e) { /* description stays null */ }
   }
 
+  // P154 is the logo image, served from Wikimedia with open CORS, so
+  // the palette can be read off it without tainting a canvas.
+  const logoFile = (() => {
+    const v = claimValue(claims, "P154");
+    return typeof v === "string" ? v : null;
+  })();
+  // Special:FilePath redirects and the redirect drops the CORS header,
+  // which taints the canvas. Resolve the direct upload thumbnail URL,
+  // which does send the header, so the palette can be read.
+  let logoUrl = null;
+  if (logoFile) {
+    try {
+      const api =
+        "https://commons.wikimedia.org/w/api.php?action=query&titles=" +
+        encodeURIComponent("File:" + logoFile) +
+        "&prop=imageinfo&iiprop=url&iiurlwidth=320&format=json&origin=*";
+      const j = await (await fetch(api, { headers: LOOKUP_HEADERS })).json();
+      const page = j.query && j.query.pages && Object.values(j.query.pages)[0];
+      const info = page && page.imageinfo && page.imageinfo[0];
+      logoUrl = info ? info.thumburl || info.url : null;
+    } catch (e) { logoUrl = null; }
+  }
+
   const founded = (() => {
     const v = claimValue(claims, "P571");
     return v && v.time ? Number(v.time.slice(1, 5)) : null;
@@ -177,6 +200,7 @@ async function lookupCompany(name) {
     products: productIds.map((i) => labels[i]).filter(Boolean).map(softenLookupText),
     founded,
     employees,
+    logoUrl,
     revenueSeries: revenueSeriesFromClaims(claims),
     news,
   };
